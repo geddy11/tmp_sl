@@ -15,3 +15,9 @@ Load table:
 
 Battery life: 
 -kall ekstern funksjon f(tabs, tstep, curr) = (volt, remain capacity)
+
+
+solve-output:
+[element, vout, iin, power, loss, efficiency]
+
+p=ui=u^2/r=r*i^2
