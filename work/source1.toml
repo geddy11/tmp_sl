@@ -1,0 +1,3 @@
+voltage = 60.2
+max_current = 0.72
+comment = "test string"

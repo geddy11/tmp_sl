@@ -1,0 +1,17 @@
+-grupper:
+ * Voltage, battery
+ * converters
+ * linreg
+ * loads: 
+ * loss elements: cable (resistor?), resistor, voltage-drop (e.g. diode)
+
+-rules:
+ elementer
+
+Load table:
+-Global sett last-caser
+-Definerer faser og dutycycle
+-Loads kan bruke disse fasene (eller bare ha default)
+
+Battery life: 
+-kall ekstern funksjon f(tabs, tstep, curr) = (volt, remain capacity)
