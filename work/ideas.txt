@@ -14,7 +14,7 @@ Load table:
 -Loads kan bruke disse fasene (eller bare ha default)
 
 Battery life: 
--kall ekstern funksjon f(tabs, tstep, curr) = (volt, remain capacity)
+-kall ekstern funksjon f(tabs, tstep, curr) = (volt, remain capacity, rs)
 
 
 solve-output:
