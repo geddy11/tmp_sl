@@ -35,24 +35,41 @@ class ElementTypes(Enum):
     LINREG = 5
 
 
-IMAX_DEFAULT = 1.0e6
+MAX_DEFAULT = 1.0e6
 IQ_DEFAULT = 0.0
 RS_DEFAULT = 0.0
 VDROP_DEFAULT = 0.0
+LIMITS_DEFAULT = {
+    "vi": [0, MAX_DEFAULT],
+    "vo": [0, MAX_DEFAULT],
+    "ii": [0, MAX_DEFAULT],
+    "io": [0, MAX_DEFAULT],
+}
 
 
-def __get_opt(params, key, default):
+def _get_opt(params, key, default):
     """Get optional parameter from dict"""
     if key in params:
         return params[key]
     return default
 
 
-def __get_mand(params, key):
+def _get_mand(params, key):
     """Get mandatory parameter from dict"""
     if key in params:
         return params[key]
     raise KeyError("Parameter dict is missing entry for '{}'".format(key))
+
+
+def _get_warns(limits, checks):
+    """Check parameter values against limits"""
+    warn = ""
+    keys = list(checks.keys())
+    for key in keys:
+        lim = _get_opt(limits, key, [0, MAX_DEFAULT])
+        if abs(checks[key]) > abs(lim[1]) or abs(checks[key]) < abs(lim[0]):
+            warn += key + " "
+    return warn
 
 
 class ElementMeta(type):
@@ -107,14 +124,14 @@ class Source:
         *,
         vo: float,
         rs: float = RS_DEFAULT,
-        imax: float = IMAX_DEFAULT
+        limits: dict = LIMITS_DEFAULT
     ):
         """Set source name, voltage, internal resistance and max current"""
         self.params = {}
         self.params["name"] = name
         self.params["vo"] = vo
-        self.params["imax"] = abs(imax)
         self.params["rs"] = abs(rs)
+        self.limits = limits
 
     @classmethod
     def from_file(cls, name: str, *, fname: str = ""):
@@ -122,10 +139,10 @@ class Source:
         with open(fname, "r") as f:
             config = toml.load(f)
 
-        v = __get_mand(config, "vo")
-        mc = __get_opt(config, "imax", IMAX_DEFAULT)
-        r = __get_opt(config, "rs", RS_DEFAULT)
-        return cls(name, vo=v, rs=r, imax=mc)
+        v = _get_mand(config, "vo")
+        r = _get_opt(config, "rs", RS_DEFAULT)
+        lim = _get_opt(config, "limits", LIMITS_DEFAULT)
+        return cls(name, vo=v, rs=r, limits=lim)
 
     def _get_inp_current(self):
         return 0.0
@@ -144,15 +161,14 @@ class Source:
     def _solv_pwr_loss(self, vi, vo, ii, io):
         """Calculate power and loss in element"""
         pwr = abs(vo * io)
-        loss = abs(self.params["rs"] * io * io)
-        return pwr, loss, (pwr - loss) / pwr
+        loss = self.params["rs"] * io * io
+        if pwr > 0.0:
+            return pwr, loss, (pwr - loss) / pwr
+        return pwr, loss, 100.0
 
     def _solv_get_warns(self, vi, vo, ii, io):
         """Check limits"""
-        if io > self.params["imax"]:
-            return "io: {:.2f} > {:.2f}".format(io, self.params["imax"])
-
-        return ""
+        return _get_warns(self.limits, {"ii": ii})
 
 
 class PLoad:
@@ -172,13 +188,14 @@ class PLoad:
     @property
     def child_types(self):
         """The Load element cannot have childs"""
-        return {None}
+        return [None]
 
-    def __init__(self, name: str, *, pwr: float):
+    def __init__(self, name: str, *, pwr: float, limits: dict = LIMITS_DEFAULT):
         """Set load power"""
         self.params = {}
         self.params["name"] = name
         self.params["pwr"] = abs(pwr)
+        self.limits = limits
 
     @classmethod
     def from_file(cls, name: str, *, fname: str = ""):
@@ -186,8 +203,9 @@ class PLoad:
         with open(fname, "r") as f:
             config = toml.load(f)
 
-        p = __get_mand(config, "pwr")
-        return cls(name, pwr=p)
+        p = _get_mand(config, "pwr")
+        lim = _get_opt(config, "limits", LIMITS_DEFAULT)
+        return cls(name, pwr=p, limits=lim)
 
     def _get_inp_current(self):
         return 0.0
@@ -211,8 +229,7 @@ class PLoad:
 
     def _solv_get_warns(self, vi, vo, ii, io):
         """Check limits"""
-
-        return ""
+        return _get_warns(self.limits, {"vi": vi, "ii": ii})
 
 
 class ILoad(PLoad):
@@ -224,11 +241,12 @@ class ILoad(PLoad):
         type of element
     """
 
-    def __init__(self, name: str, *, ii: float):
+    def __init__(self, name: str, *, ii: float, limits: dict = LIMITS_DEFAULT):
         """Set load current"""
         self.params = {}
         self.params["name"] = name
         self.params["ii"] = abs(ii)
+        self.limits = limits
 
     @classmethod
     def from_file(cls, name: str, *, fname: str = ""):
@@ -236,8 +254,9 @@ class ILoad(PLoad):
         with open(fname, "r") as f:
             config = toml.load(f)
 
-        i = __get_mand(config, "ii")
-        return cls(name, ii=i)
+        i = _get_mand(config, "ii")
+        lim = _get_opt(config, "limits", LIMITS_DEFAULT)
+        return cls(name, ii=i, limits=lim)
 
     def _get_inp_current(self):
         return self.params["ii"]
@@ -268,12 +287,20 @@ class Loss:
         et.remove(ElementTypes.SOURCE)
         return et
 
-    def __init__(self, name, *, rs: float = RS_DEFAULT, vdrop: float = VDROP_DEFAULT):
+    def __init__(
+        self,
+        name,
+        *,
+        rs: float = RS_DEFAULT,
+        vdrop: float = VDROP_DEFAULT,
+        limits: dict = LIMITS_DEFAULT
+    ):
         """Set series resistance and/or vdrop"""
         self.params = {}
         self.params["name"] = name
         self.params["rs"] = abs(rs)
         self.params["vdrop"] = abs(vdrop)
+        self.limits = limits
 
     @classmethod
     def from_file(cls, name: str, *, fname: str = ""):
@@ -281,9 +308,10 @@ class Loss:
         with open(fname, "r") as f:
             config = toml.load(f)
 
-        vd = __get_opt(config, "vdrop", VDROP_DEFAULT)
-        r = __get_opt(config, "rs", RS_DEFAULT)
-        return cls(name, rs=r, vdrop=vd)
+        vd = _get_opt(config, "vdrop", VDROP_DEFAULT)
+        r = _get_opt(config, "rs", RS_DEFAULT)
+        lim = _get_opt(config, "limits", LIMITS_DEFAULT)
+        return cls(name, rs=r, vdrop=vd, limits=lim)
 
     def _get_inp_current(self):
         return 0.0
@@ -312,8 +340,7 @@ class Loss:
 
     def _solv_get_warns(self, vi, vo, ii, io):
         """Check limits"""
-
-        return ""
+        return _get_warns(self.limits, {"vi": vi, "vo": vo, "ii": ii, "io": ii})
 
 
 class Converter:
@@ -344,7 +371,7 @@ class Converter:
         vo: float,
         eff: float,
         iq: float = IQ_DEFAULT,
-        imax: float = IMAX_DEFAULT
+        limits: dict = LIMITS_DEFAULT
     ):
         """Set converter parameters"""
         self.params = {}
@@ -355,8 +382,8 @@ class Converter:
         if not (eff < 1.0):
             raise ValueError("Efficiency must be < 1.0")
         self.params["eff"] = eff
-        self.params["imax"] = abs(imax)
         self.params["iq"] = abs(iq)
+        self.limits = limits
 
     @classmethod
     def from_file(cls, name: str, *, fname: str = ""):
@@ -364,11 +391,11 @@ class Converter:
         with open(fname, "r") as f:
             config = toml.load(f)
 
-        v = __get_mand(config, "vo")
-        e = __get_mand(config, "eff")
-        iq = __get_opt(config, "iq", IQ_DEFAULT)
-        mc = __get_opt(config, "imax", IMAX_DEFAULT)
-        return cls(name, vo=v, eff=e, iq=iq, imax=mc)
+        v = _get_mand(config, "vo")
+        e = _get_mand(config, "eff")
+        iq = _get_opt(config, "iq", IQ_DEFAULT)
+        lim = _get_opt(config, "limits", LIMITS_DEFAULT)
+        return cls(name, vo=v, eff=e, iq=iq, limits=lim)
 
     def _get_inp_current(self):
         return self.params["iq"]
@@ -400,8 +427,7 @@ class Converter:
 
     def _solv_get_warns(self, vi, vo, ii, io):
         """Check limits"""
-
-        return ""
+        return _get_warns(self.limits, {"vi": vi, "vo": vo, "ii": ii, "io": ii})
 
 
 class LinReg:
@@ -432,7 +458,7 @@ class LinReg:
         vo: float,
         vdrop: float = VDROP_DEFAULT,
         iq: float = IQ_DEFAULT,
-        imax: float = IMAX_DEFAULT
+        limits: dict = LIMITS_DEFAULT
     ):
         """Set linear regulator parameters"""
         self.params = {}
@@ -442,7 +468,7 @@ class LinReg:
             raise ValueError("Voltage drop must be < vo")
         self.params["vdrop"] = abs(vdrop)
         self.params["iq"] = abs(iq)
-        self.params["imax"] = abs(imax)
+        self.limits = limits
 
     @classmethod
     def from_file(cls, name: str, *, fname: str = ""):
@@ -450,11 +476,11 @@ class LinReg:
         with open(fname, "r") as f:
             config = toml.load(f)
 
-        v = __get_mand(config, "vo")
-        vd = __get_opt(condfig, "vdrop", VDROP_DEFAULT)
-        iq = __get_opt(config, "iq", IQ_DEFAULT)
-        mc = __get_opt(config, "imax", IMAX_DEFAULT)
-        return cls(name, vo=v, vdrop=vd, iq=iq, imax=mc)
+        v = _get_mand(config, "vo")
+        vd = _get_opt(condfig, "vdrop", VDROP_DEFAULT)
+        iq = _get_opt(config, "iq", IQ_DEFAULT)
+        lim = _get_opt(config, "limits", LIMITS_DEFAULT)
+        return cls(name, vo=v, vdrop=vd, iq=iq, limits=lim)
 
     def _get_inp_current(self):
         return self.params["iq"]
@@ -480,5 +506,4 @@ class LinReg:
 
     def _solv_get_warns(self, vi, vo, ii, io):
         """Check limits"""
-
-        return ""
+        return _get_warns(self.limits, {"vi": vi, "vo": vo, "ii": ii, "io": ii})
