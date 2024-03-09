@@ -40,10 +40,10 @@ IQ_DEFAULT = 0.0
 RS_DEFAULT = 0.0
 VDROP_DEFAULT = 0.0
 LIMITS_DEFAULT = {
-    "vi": [0, MAX_DEFAULT],
-    "vo": [0, MAX_DEFAULT],
-    "ii": [0, MAX_DEFAULT],
-    "io": [0, MAX_DEFAULT],
+    "vi": [0.0, MAX_DEFAULT],
+    "vo": [0.0, MAX_DEFAULT],
+    "ii": [0.0, MAX_DEFAULT],
+    "io": [0.0, MAX_DEFAULT],
 }
 
 
@@ -139,8 +139,8 @@ class Source:
         with open(fname, "r") as f:
             config = toml.load(f)
 
-        v = _get_mand(config, "vo")
-        r = _get_opt(config, "rs", RS_DEFAULT)
+        v = _get_mand(config["source"], "vo")
+        r = _get_opt(config["source"], "rs", RS_DEFAULT)
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
         return cls(name, vo=v, rs=r, limits=lim)
 
@@ -203,7 +203,7 @@ class PLoad:
         with open(fname, "r") as f:
             config = toml.load(f)
 
-        p = _get_mand(config, "pwr")
+        p = _get_mand(config["pload"], "pwr")
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
         return cls(name, pwr=p, limits=lim)
 
@@ -254,7 +254,7 @@ class ILoad(PLoad):
         with open(fname, "r") as f:
             config = toml.load(f)
 
-        i = _get_mand(config, "ii")
+        i = _get_mand(config["iload"], "ii")
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
         return cls(name, ii=i, limits=lim)
 
@@ -308,8 +308,8 @@ class Loss:
         with open(fname, "r") as f:
             config = toml.load(f)
 
-        vd = _get_opt(config, "vdrop", VDROP_DEFAULT)
-        r = _get_opt(config, "rs", RS_DEFAULT)
+        r = _get_mand(config["loss"], "rs")
+        vd = _get_mand(config["loss"], "vdrop")
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
         return cls(name, rs=r, vdrop=vd, limits=lim)
 
@@ -391,9 +391,9 @@ class Converter:
         with open(fname, "r") as f:
             config = toml.load(f)
 
-        v = _get_mand(config, "vo")
-        e = _get_mand(config, "eff")
-        iq = _get_opt(config, "iq", IQ_DEFAULT)
+        v = _get_mand(config["converter"], "vo")
+        e = _get_mand(config["converter"], "eff")
+        iq = _get_opt(config["converter"], "iq", IQ_DEFAULT)
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
         return cls(name, vo=v, eff=e, iq=iq, limits=lim)
 
@@ -476,9 +476,9 @@ class LinReg:
         with open(fname, "r") as f:
             config = toml.load(f)
 
-        v = _get_mand(config, "vo")
-        vd = _get_opt(condfig, "vdrop", VDROP_DEFAULT)
-        iq = _get_opt(config, "iq", IQ_DEFAULT)
+        v = _get_mand(config["linreg"], "vo")
+        vd = _get_opt(config["linreg"], "vdrop", VDROP_DEFAULT)
+        iq = _get_opt(config["linreg"], "iq", IQ_DEFAULT)
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
         return cls(name, vo=v, vdrop=vd, iq=iq, limits=lim)
 

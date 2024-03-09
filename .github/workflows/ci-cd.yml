@@ -27,12 +27,12 @@ jobs:
         run: poetry run pytest tests/ --cov=sysloss --cov-report=xml
 
       - name: Use Codecov to track coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml   # coverage report
 
-      - name: Coverage badge
-        uses: tj-actions/coverage-badge-py@v2
+      #- name: Coverage badge
+      #  uses: tj-actions/coverage-badge-py@v2
 
       #- name: Build documentation
       #  run: poetry run make html --directory docs/
