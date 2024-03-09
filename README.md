@@ -1,5 +1,5 @@
 
-![sysLoss logo](docs/logo.png)
+![sysLoss logo](docs/sysloss.svg)
 
 <p align="center">
 <a href="https://github.com/geddy11/tmp_sl/actions"><img alt="Actions Status" src="https://github.com/geddy11/tmp_sl/actions/workflows/ci-cd.yml/badge.svg"></a>
