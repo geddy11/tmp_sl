@@ -23,6 +23,8 @@
 from enum import Enum, unique
 import toml
 
+__all__ = ["Source", "ILoad", "PLoad", "Loss", "Converter", "LinReg"]
+
 
 @unique
 class ElementTypes(Enum):
@@ -494,11 +496,14 @@ class LinReg:
 
     def _solv_outp_volt(self, vi, ii, io):
         """Calculate element output voltage from vi, ii and io"""
-        return self.params["vo"]
+        v = min(abs(self.params["vo"]), max(abs(vi) - self.params["vdrop"], 0.0))
+        if self.params["vo"] >= 0.0:
+            return v
+        return -v
 
     def _solv_pwr_loss(self, vi, vo, ii, io):
         """Calculate power and loss in element"""
-        loss = abs((vi - vo) * io + vi * self.params["iq"])
+        loss = (abs(vi) - abs(vo)) * io + abs(vi) * self.params["iq"]
         pwr = abs(vi * ii)
         if pwr >= 0.0:
             return 0.0, loss, (pwr - loss) / pwr

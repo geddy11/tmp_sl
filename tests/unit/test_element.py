@@ -22,13 +22,15 @@
 
 
 from sysloss.element import *
+from sysloss.element import ElementTypes, ElementInterface
+from sysloss.element import LIMITS_DEFAULT
 import pytest
 
 
 def test_classes():
     """Check informal interface on elements"""
     assert issubclass(Source, ElementInterface), "subclass Source"
-    assert issubclass(PLoad, ElementInterface), "subclass ILoad"
+    assert issubclass(ILoad, ElementInterface), "subclass ILoad"
     assert issubclass(PLoad, ElementInterface), "subclass PLoad"
     assert issubclass(Loss, ElementInterface), "subclass Loss"
     assert issubclass(Converter, ElementInterface), "subclass Converter"
