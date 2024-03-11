@@ -505,7 +505,7 @@ class LinReg:
         """Calculate power and loss in element"""
         loss = (abs(vi) - abs(vo)) * io + abs(vi) * self.params["iq"]
         pwr = abs(vi * ii)
-        if pwr >= 0.0:
+        if pwr > 0.0:
             return 0.0, loss, (pwr - loss) / pwr
         return 0.0, loss, 0.0
 

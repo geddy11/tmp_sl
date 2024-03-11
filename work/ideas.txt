@@ -26,3 +26,7 @@ solve-output:
 p=ui=u^2/r=r*i^2
 
 
+
+pytest --cov --cov-report html:cov_html
+
+

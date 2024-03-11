@@ -21,9 +21,9 @@
 # SOFTWARE.
 
 
-from sysloss.element import *
-from sysloss.element import ElementTypes, ElementInterface
-from sysloss.element import LIMITS_DEFAULT
+from sysloss.elements import *
+from sysloss.elements import ElementTypes, ElementInterface
+from sysloss.elements import LIMITS_DEFAULT
 import pytest
 
 
