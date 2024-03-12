@@ -328,11 +328,9 @@ class System:
             if self.__leaves[n] == 1:  # leaf
                 if n == 0:  # root
                     vo[n] = self.g[n]._solv_outp_volt(0.0, 0.0, 0.0)
-                    # print('leaf, root:', vo[n], n)
                 else:
                     p = self.__parents[n]
-                    vo[n] = self.g[n]._solv_outp_volt(v[p], i[p], 0.0)
-                    # print('leaf: ', vo[n], n)
+                    vo[n] = self.g[n]._solv_outp_volt(v[p], i[n], 0.0)
             else:
                 # add currents into childs
                 isum = 0
@@ -340,30 +338,30 @@ class System:
                     isum += i[c]
                 if n == 0:  # root
                     vo[n] = self.g[n]._solv_outp_volt(0.0, 0.0, isum)
-                    # print('root:', vo[n], n)
                 else:
                     p = self.__parents[n]
-                    vo[n] = self.g[n]._solv_outp_volt(v[p], i[p], isum)
-                    # print('element:' , vo[n], n)
+                    vo[n] = self.g[n]._solv_outp_volt(v[p], i[n], isum)
 
         return vo
 
     def __back_prop(self, v: float, i: float):
         """Backward propagation of currents"""
-        _, io = self.__sys_vars()
+        _, ii = self.__sys_vars()
         # update input currents (per edge)
         for e in self.__edges:
             if self.__leaves[e[1]] == 1:  # leaf
-                io[e[1]] = self.g[e[1]]._solv_inp_curr(v[e[0]], 0.0, 0.0)
+                ii[e[1]] = self.g[e[1]]._solv_inp_curr(v[e[0]], 0.0, 0.0)
             else:
-                c = self.__childs_b[e[1]]
-                io[e[1]] = self.g[e[1]]._solv_inp_curr(v[e[0]], v[e[1]], i[c[0]])
-        # add currents into childs from root
+                isum = 0.0
+                for c in self.__childs_b[e[1]]:
+                    isum += i[c]
+                ii[e[1]] = self.g[e[1]]._solv_inp_curr(v[e[0]], v[e[1]], isum)
+        # add currents into childs from root (which is not in edge list)
         if self.__childs_b != {}:
             for c in self.__childs_b[0]:
-                io[0] += i[c]
+                ii[0] += i[c]
 
-        return io
+        return ii
 
     def __rel_update(self):
         """Update lists with element relationships"""

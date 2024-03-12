@@ -49,7 +49,7 @@ def test_case1():
     assert len(df) == 9, "Case1 result row count"
     assert np.allclose(
         df[df["Element"] == "System total"]["Efficiency (%)"][8],
-        0.64621570282,
+        0.793561,
         rtol=1e-6,
     ), "Case1 efficiency"
     case1.save("tests/unit/case1.json")
@@ -59,6 +59,23 @@ def test_case1():
     assert type(t) == rich.tree.Tree, "Case1 tree output"
     with pytest.raises(ValueError):
         case1.tree("Dummy")
+
+    # reload system from json
+    case1b = System.from_file("tests/unit/case1.json")
+    df2 = case1b.solve()
+    assert len(df2) == 9, "Case1b result row count"
+
+    assert np.allclose(
+        df2[df2["Element"] == "System total"]["Efficiency (%)"][8],
+        df[df["Element"] == "System total"]["Efficiency (%)"][8],
+        rtol=1e-6,
+    ), "Case1 vs case1b efficiency"
+
+    assert np.allclose(
+        df2[df2["Element"] == "System total"]["Power (W)"][8],
+        df[df["Element"] == "System total"]["Power (W)"][8],
+        rtol=1e-6,
+    ), "Case1 vs case1b power"
 
 
 def test_case2():
@@ -100,16 +117,3 @@ def test_case5():
     case5.add_element("0V system", element=LinReg("LDO", vo=-3.3))
     df = case5.solve()
     assert len(df) == 3, "Case5 result row count"
-
-
-def test_case1b():
-    case1b = System.from_file("tests/unit/case1.json")
-    df2 = case1b.solve()
-    assert len(df2) == 9, "Case1b result row count"
-
-
-#     assert np.allclose(
-#         df2[df2["Element"] == "System total"]["Efficiency (%)"][8],
-#         0.64621570282,
-#         rtol=1e-6,
-#     ), "Case1b efficiency"
