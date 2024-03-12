@@ -100,6 +100,11 @@ class System:
                             self.add_element(
                                 p, element=PLoad(cname, pwr=pwr, limits=limits)
                             )
+                        elif "rs" in c["params"]:
+                            rs = _get_mand(c["params"], "rs")
+                            self.add_element(
+                                p, element=RLoad(cname, rs=rs, limits=limits)
+                            )
                         else:
                             ii = _get_mand(c["params"], "ii")
                             self.add_element(
@@ -117,27 +122,17 @@ class System:
 
     def __chk_parent(self, parent: str):
         """Check if parent exists"""
-        if type(parent) != str:
-            raise ValueError("Error: Parent name must be a string!")
-        # check if parent exists
         if not parent in self.g.attrs["nodes"].keys():
             raise ValueError('Error: Parent name "{}" not found!'.format(parent))
-            return False
 
         return True
 
-    # check if element name is valid
     def __chk_name(self, name: str):
         """Check if element name is valid"""
-        # check name type
-        if type(name) != str:
-            raise ValueError("Error: Element name must be a string!")
-            return False
         # check if exists exists
         pidx = self.__get_index(name)
         if name in self.g.attrs["nodes"].keys():
             raise ValueError('Error: Element name "{}" is already used!'.format(name))
-            return False
 
         return True
 
@@ -214,14 +209,9 @@ class System:
     def add_element(self, parent: str, *, element):
         """Add element to system"""
         # check that parent exists
-        if not self.__chk_parent(parent):
-            raise ValueError("Error: Parent name does not exist!")
-            return
-
+        self.__chk_parent(parent)
         # check that element name is unique
-        if not self.__chk_name(element.params["name"]):
-            raise ValueError("Error: Element name already taken!")
-            return
+        self.__chk_name(element.params["name"])
 
         pidx = self.__get_index(parent)
 
@@ -232,19 +222,16 @@ class System:
                     element.element_type.name
                 )
             )
-            return
 
         cidx = self.g.add_child(pidx, element, None)
         # print('Add {} to {}'.format(cidx, pidx))
         self.g.attrs["nodes"][element.params["name"]] = cidx
 
-    def change_element(self, *, name: str, element):
+    def change_element(self, name: str, *, element):
         """Replace element with a new one"""
         # if element name changes, check that it is unique
         if name != element.params["name"]:
-            if not self.__chk_name(element.params["name"]):
-                raise ValueError("Error: Element name already taken!")
-                return
+            self.__chk_name(element.params["name"])
 
         eidx = self.__get_index(name)
         # check that parent allows element type as child
@@ -256,14 +243,13 @@ class System:
                         element.element_type.name
                     )
                 )
-                return
 
         self.g[eidx] = element
         # replace node name in graph dict
         del [self.g.attrs["nodes"][name]]
         self.g.attrs["nodes"][element.params["name"]] = eidx
 
-    def del_element(self, *, name: str, del_childs: bool = True):
+    def del_element(self, name: str, *, del_childs: bool = True):
         eidx = self.__get_index(name)
         if eidx == -1:
             raise ValueError("Error: Element name does not exist!")
@@ -272,14 +258,13 @@ class System:
         parents = self.__get_parents()
         leaves = self.__get_leaves()
         childs = self.__get_childs(rev=True)
-        # if not leaf, check if child type is allowed by parent type
-        if leaves[eidx] == 0:
-            # print(childs[eidx], parents[eidx])
-            for c in childs[eidx]:
-                if not self.g[c].element_type in self.g[parents[eidx]].child_types:
-                    raise ValueError(
-                        "Error: Parent and child of element are not compatible!"
-                    )
+        # if not leaf, check if child type is allowed by parent type (not possible?)
+        # if leaves[eidx] == 0:
+        #     for c in childs[eidx]:
+        #         if not self.g[c].element_type in self.g[parents[eidx]].child_types:
+        #             raise ValueError(
+        #                 "Error: Parent and child of element are not compatible!"
+        #             )
         # delete childs first if selected
         if del_childs:
             for c in rx.descendants(self.g, eidx):
@@ -357,6 +342,7 @@ class System:
                     isum += i[c]
                 ii[e[1]] = self.g[e[1]]._solv_inp_curr(v[e[0]], v[e[1]], isum)
         # add currents into childs from root (which is not in edge list)
+        ii[0] = self.g[0]._solv_inp_curr(v[0], 0.0, 0.0)
         if self.__childs_b != {}:
             for c in self.__childs_b[0]:
                 ii[0] += i[c]
@@ -499,18 +485,8 @@ class System:
         # print(self.__childs_f)
         # extract params
 
-        names, typ, parent, vo, vdrop, iq, rs, eff, ii, pwr = (
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
+        names, typ, parent, vo, vdrop = [], [], [], [], []
+        iq, rs, eff, ii, pwr = [], [], [], [], []
         lii, lio, lvi, lvo = [], [], [], []
         for n in self.__nodes:
             names += [self.g[n].params["name"]]
@@ -522,6 +498,8 @@ class System:
             elif self.g[n].element_type == ElementTypes.LOAD:
                 if "pwr" in self.g[n].params:
                     _pwr = self.g[n].params["pwr"]
+                elif "rs" in self.g[n].params:
+                    _rs = self.g[n].params["rs"]
                 else:
                     _ii = self.g[n].params["ii"]
             elif self.g[n].element_type == ElementTypes.CONVERTER:

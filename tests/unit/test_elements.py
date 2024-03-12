@@ -70,6 +70,19 @@ def test_iload():
     assert isinstance(ia, ElementInterface), "instance ILoad"
 
 
+def test_rload():
+    """Check RLoad element"""
+    ra = RLoad("Load 1", rs=200e3)
+    assert ra.element_type == ElementTypes.LOAD, "RLoad element type"
+    assert list(ra.child_types) == [None], "RLoad child types"
+    rb = RLoad.from_file("Load 1", fname="tests/data/rload.toml")
+    assert ra.params == rb.params, "RLoad parameters from file"
+    assert ra.limits == rb.limits, "RLoad limits from file"
+    assert isinstance(ra, ElementInterface), "instance ILoad"
+    with pytest.raises(ValueError):
+        ra = RLoad("Load 1", rs=0.0)
+
+
 def test_loss():
     """Check Loss element"""
     la = Loss("Loss 1", rs=30e-3, vdrop=0.0, limits=LIMITS_DEFAULT)

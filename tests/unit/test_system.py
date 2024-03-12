@@ -43,18 +43,19 @@ def test_case1():
         "RC filter", element=LinReg("LDO 2.5V", vo=2.5, vdrop=0.27, iq=150e-6)
     )
     case1.add_element("LDO 2.5V", element=PLoad("ADC", pwr=15e-3))
+    case1.add_element("5V boost", element=RLoad("Res divider", rs=200e3))
     df = case1.solve(maxiter=1)
     assert df == None, "Case1 aborted on maxiter"
     df = case1.solve(quiet=False)
-    assert len(df) == 9, "Case1 result row count"
+    assert len(df) == 10, "Case1 result row count"
     assert np.allclose(
-        df[df["Element"] == "System total"]["Efficiency (%)"][8],
-        0.793561,
+        df[df["Element"] == "System total"]["Efficiency (%)"][9],
+        0.793669,
         rtol=1e-6,
     ), "Case1 efficiency"
     case1.save("tests/unit/case1.json")
     dfp = case1.params(limits=True)
-    assert len(dfp) == 8, "Case1 parameters row count"
+    assert len(dfp) == 9, "Case1 parameters row count"
     t = case1.tree()
     assert type(t) == rich.tree.Tree, "Case1 tree output"
     with pytest.raises(ValueError):
@@ -63,17 +64,17 @@ def test_case1():
     # reload system from json
     case1b = System.from_file("tests/unit/case1.json")
     df2 = case1b.solve()
-    assert len(df2) == 9, "Case1b result row count"
+    assert len(df2) == 10, "Case1b result row count"
 
     assert np.allclose(
-        df2[df2["Element"] == "System total"]["Efficiency (%)"][8],
-        df[df["Element"] == "System total"]["Efficiency (%)"][8],
+        df2[df2["Element"] == "System total"]["Efficiency (%)"][9],
+        df[df["Element"] == "System total"]["Efficiency (%)"][9],
         rtol=1e-6,
     ), "Case1 vs case1b efficiency"
 
     assert np.allclose(
-        df2[df2["Element"] == "System total"]["Power (W)"][8],
-        df[df["Element"] == "System total"]["Power (W)"][8],
+        df2[df2["Element"] == "System total"]["Power (W)"][9],
+        df[df["Element"] == "System total"]["Power (W)"][9],
         rtol=1e-6,
     ), "Case1 vs case1b power"
 
@@ -117,3 +118,59 @@ def test_case5():
     case5.add_element("0V system", element=LinReg("LDO", vo=-3.3))
     df = case5.solve()
     assert len(df) == 3, "Case5 result row count"
+
+
+def test_case6():
+    """Create new system with root as non-Source"""
+    with pytest.raises(ValueError):
+        case6 = System("Case6 system", PLoad("Load", pwr=1))
+
+
+def test_case7():
+    """Add element to non-existing element"""
+    case7 = System("Case7 system", Source("10V system", vo=10.0))
+    with pytest.raises(ValueError):
+        case7.add_element("5V input", element=Converter("Buck", vo=2.5, eff=0.75))
+
+
+def test_case8():
+    """Add element with already used name"""
+    case8 = System("Case8 system", Source("10V system", vo=10.0))
+    case8.add_element("10V system", element=Converter("Buck", vo=2.5, eff=0.75))
+    with pytest.raises(ValueError):
+        case8.add_element("10V system", element=Converter("Buck", vo=2.5, eff=0.75))
+
+
+def test_case9():
+    """Try adding element of wrong type"""
+    case9 = System("Case9 system", Source("10V system", vo=10.0))
+    with pytest.raises(ValueError):
+        case9.add_element("10V system", element=Source("5V", vo=5.0))
+
+
+def test_case10():
+    """Change element"""
+    case10 = System("Case10 system", Source("24V system", vo=24.0, rs=12e-3))
+    case10.add_element("24V system", element=Converter("Buck", vo=3.3, eff=0.80))
+    case10.change_element("Buck", element=LinReg("LDO", vo=3.3))
+    with pytest.raises(ValueError):
+        case10.change_element("LDO", element=Source("5V", vo=5.0))
+
+
+def test_case11():
+    """Delete element"""
+    case11 = System("Case11 system", Source("CR2032", vo=3.0))
+    case11.add_element("CR2032", element=Converter("1.8V buck", vo=1.8, eff=0.87))
+    case11.add_element("1.8V buck", element=PLoad("MCU", pwr=27e-3))
+    case11.del_element("1.8V buck", del_childs=False)
+    dfp = case11.params()
+    assert len(dfp) == 2, "Case11 parameters row count"
+    with pytest.raises(ValueError):
+        case11.del_element("CR2032")
+    with pytest.raises(ValueError):
+        case11.del_element("Non-existent")
+    case11.add_element("CR2032", element=Converter("1.8V buck", vo=1.8, eff=0.87))
+    case11.add_element("1.8V buck", element=PLoad("MCU2", pwr=27e-3))
+    case11.del_element("1.8V buck")
+    dfp = case11.params()
+    assert len(dfp) == 2, "Case11 parameters row count"

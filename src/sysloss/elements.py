@@ -23,7 +23,7 @@
 from enum import Enum, unique
 import toml
 
-__all__ = ["Source", "ILoad", "PLoad", "Loss", "Converter", "LinReg"]
+__all__ = ["Source", "ILoad", "PLoad", "RLoad", "Loss", "Converter", "LinReg"]
 
 
 @unique
@@ -265,6 +265,38 @@ class ILoad(PLoad):
 
     def _solv_inp_curr(self, vi, vo, io):
         return self.params["ii"]
+
+
+class RLoad(PLoad):
+    """The Load element .
+
+    Attributes
+    ----------
+    element_type : ElementTypes.LOAD (enum)
+        type of element
+    """
+
+    def __init__(self, name: str, *, rs: float, limits: dict = LIMITS_DEFAULT):
+        """Set load current"""
+        self.params = {}
+        self.params["name"] = name
+        if abs(rs) == 0.0:
+            raise ValueError("Error: rs must be > 0!")
+        self.params["rs"] = abs(rs)
+        self.limits = limits
+
+    @classmethod
+    def from_file(cls, name: str, *, fname: str = ""):
+        """Configure load from configuration file"""
+        with open(fname, "r") as f:
+            config = toml.load(f)
+
+        r = _get_mand(config["rload"], "rs")
+        lim = _get_opt(config, "limits", LIMITS_DEFAULT)
+        return cls(name, rs=r, limits=lim)
+
+    def _solv_inp_curr(self, vi, vo, io):
+        return abs(vi) / self.params["rs"]
 
 
 class Loss:
