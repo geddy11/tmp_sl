@@ -129,19 +129,18 @@ class System:
 
     def __chk_name(self, name: str):
         """Check if element name is valid"""
-        # check if exists exists
-        pidx = self.__get_index(name)
+        # check if name exists
         if name in self.g.attrs["nodes"].keys():
             raise ValueError('Error: Element name "{}" is already used!'.format(name))
 
         return True
 
-    def __get_childs(self, rev: bool = True):
+    def __get_childs_tree(self):
         """Get dict of parent/childs"""
-        if rev == True:
-            childs = list(reversed(rx.bfs_successors(self.g, 0)))
-        else:
-            childs = list(rx.bfs_successors(self.g, 0))
+        # if rev == True:
+        #    childs = list(reversed(rx.bfs_successors(self.g, 0)))
+        # else:
+        childs = list(rx.bfs_successors(self.g, 0))
         cdict = {}
         for c in childs:
             cs = []
@@ -157,40 +156,30 @@ class System:
             nodes += [self.g.attrs["nodes"][n.params["name"]]]
         return sorted(nodes)
 
+    def __get_childs(self):
+        """Get list of children of each node"""
+        nodes = self.__get_nodes()
+        cs = list(-np.ones(max(nodes) + 1, dtype=np.int32))
+        for n in nodes:
+            if self.g.out_degree(n) > 0:
+                ind = [i for i in self.g.successor_indices(n)]
+                cs[n] = ind
+        return cs
+
     def __get_parents(self):
-        """Get list of parent of each child"""
+        """Get list of parent of each node"""
         nodes = self.__get_nodes()
-        ps = np.zeros(max(nodes) + 1, dtype=np.int32)
+        ps = list(-np.ones(max(nodes) + 1, dtype=np.int32))
         for n in nodes:
-            if n != 0:
-                nodename = [
-                    i for i in self.g.attrs["nodes"] if self.g.attrs["nodes"][i] == n
-                ]
-                # pname = [self.__get_parent_name(self.g.attrs['nodes'][n])]
-                pname = self.g.predecessors(self.g.attrs["nodes"][nodename[0]])[
-                    0
-                ].params["name"]
-                pidx = self.g.attrs["nodes"][pname]
-                ps[n] = self.g.attrs["nodes"][
-                    self.g.predecessors(self.g.attrs["nodes"][nodename[0]])[0].params[
-                        "name"
-                    ]
-                ]
-                # print("n={}, pname={}, ps[n]={}, pidx={}".format(n, nodename, pname, ps[n], pidx))
-        return list(ps)
+            if self.g.in_degree(n) > 0:
+                ind = [i for i in self.g.predecessor_indices(n)]
+                ps[n] = ind
+        return ps
 
-    def __get_edges(self):
-        """Get list of element connections (edges)"""
-        return list(reversed(rx.dfs_edges(self.g, 0)))
-
-    def __get_leaves(self):
-        """Get list of leaf nodes"""
-        nodes = self.__get_nodes()
-        ls = np.zeros(max(nodes) + 1, dtype=np.int32)
-        for n in nodes:
-            if self.g.out_degree(n) == 0:
-                ls[n] = 1
-        return list(ls)
+    def __get_topo_sort(self):
+        """Get nodes topological sorted"""
+        tps = rx.topological_sort(self.g)
+        return [n for n in tps]
 
     def __sys_vars(self):
         """Get system variable lists"""
@@ -222,9 +211,7 @@ class System:
                     element.element_type.name
                 )
             )
-
         cidx = self.g.add_child(pidx, element, None)
-        # print('Add {} to {}'.format(cidx, pidx))
         self.g.attrs["nodes"][element.params["name"]] = cidx
 
     def change_element(self, name: str, *, element):
@@ -235,15 +222,14 @@ class System:
 
         eidx = self.__get_index(name)
         # check that parent allows element type as child
-        if eidx != 0:
-            parents = self.__get_parents()
-            if not element.element_type in self.g[parents[eidx]].child_types:
+        parents = self.__get_parents()
+        if parents[eidx] != -1:
+            if not element.element_type in self.g[parents[eidx][0]].child_types:
                 raise ValueError(
                     "Error: Parent does not allow child of type {}!".format(
                         element.element_type.name
                     )
                 )
-
         self.g[eidx] = element
         # replace node name in graph dict
         del [self.g.attrs["nodes"][name]]
@@ -253,11 +239,10 @@ class System:
         eidx = self.__get_index(name)
         if eidx == -1:
             raise ValueError("Error: Element name does not exist!")
-        if eidx == 0:
-            raise ValueError("Error: Cannot delete source node!")
         parents = self.__get_parents()
-        leaves = self.__get_leaves()
-        childs = self.__get_childs(rev=True)
+        if parents[eidx] == -1:
+            raise ValueError("Error: Cannot delete source node!")
+        childs = self.__get_childs()
         # if not leaf, check if child type is allowed by parent type (not possible?)
         # if leaves[eidx] == 0:
         #     for c in childs[eidx]:
@@ -276,9 +261,9 @@ class System:
         del [self.g.attrs["nodes"][name]]
         # restore links between new parent and childs, unless deleted
         if not del_childs:
-            if leaves[eidx] == 0:
+            if childs[eidx] != -1:
                 for c in childs[eidx]:
-                    self.g.add_edge(parents[eidx], c, None)
+                    self.g.add_edge(parents[eidx][0], c, None)
 
     def tree(self, name=""):
         """Print tree structure, starting from node name"""
@@ -309,60 +294,58 @@ class System:
         """Forward propagation of voltages"""
         vo, _ = self.__sys_vars()
         # update output voltages (per node)
-        for n in self.__nodes:
-            if self.__leaves[n] == 1:  # leaf
-                if n == 0:  # root
+        for n in self.__topo_nodes:
+            p = self.__parents[n]
+            if self.__childs[n] == -1:  # leaf
+                if p == -1:  # root
                     vo[n] = self.g[n]._solv_outp_volt(0.0, 0.0, 0.0)
                 else:
-                    p = self.__parents[n]
-                    vo[n] = self.g[n]._solv_outp_volt(v[p], i[n], 0.0)
+                    vo[n] = self.g[n]._solv_outp_volt(v[p[0]], i[n], 0.0)
             else:
                 # add currents into childs
                 isum = 0
-                for c in self.__childs_f[n]:
+                for c in self.__childs[n]:
                     isum += i[c]
                 if n == 0:  # root
                     vo[n] = self.g[n]._solv_outp_volt(0.0, 0.0, isum)
                 else:
-                    p = self.__parents[n]
-                    vo[n] = self.g[n]._solv_outp_volt(v[p], i[n], isum)
-
+                    vo[n] = self.g[n]._solv_outp_volt(v[p[0]], i[n], isum)
         return vo
 
     def __back_prop(self, v: float, i: float):
         """Backward propagation of currents"""
         _, ii = self.__sys_vars()
-        # update input currents (per edge)
-        for e in self.__edges:
-            if self.__leaves[e[1]] == 1:  # leaf
-                ii[e[1]] = self.g[e[1]]._solv_inp_curr(v[e[0]], 0.0, 0.0)
+        # update input currents (per node)
+        for n in self.__topo_nodes[::-1]:
+            p = self.__parents[n]
+            if self.__childs[n] == -1:  # leaf
+                if p == -1:  # root
+                    ii[n] = self.g[n]._solv_inp_curr(v[n], 0.0, 0.0)
+                else:
+                    ii[n] = self.g[n]._solv_inp_curr(v[p[0]], 0.0, 0.0)
             else:
                 isum = 0.0
-                for c in self.__childs_b[e[1]]:
+                for c in self.__childs[n]:
                     isum += i[c]
-                ii[e[1]] = self.g[e[1]]._solv_inp_curr(v[e[0]], v[e[1]], isum)
-        # add currents into childs from root (which is not in edge list)
-        ii[0] = self.g[0]._solv_inp_curr(v[0], 0.0, 0.0)
-        if self.__childs_b != {}:
-            for c in self.__childs_b[0]:
-                ii[0] += i[c]
+                if p == -1:  # root
+                    ii[n] = self.g[n]._solv_inp_curr(v[n], v[n], isum)
+                else:
+                    ii[n] = self.g[n]._solv_inp_curr(v[p[0]], v[n], isum)
 
         return ii
 
     def __rel_update(self):
         """Update lists with element relationships"""
-        self.__nodes = self.__get_nodes()
-        self.__edges = self.__get_edges()
-        self.__childs_f = self.__get_childs(rev=False)
-        self.__childs_b = self.__get_childs(rev=True)
         self.__parents = self.__get_parents()
-        self.__leaves = self.__get_leaves()
+        self.__childs = self.__get_childs()
+        self.__topo_nodes = self.__get_topo_sort()
 
     def __get_parent_name(self, node):
-        if node == 0:
+        """Get parent name of node"""
+        if self.__parents[node] == -1:
             return ""
 
-        return self.g[self.__parents[node]].params["name"]
+        return self.g[self.__parents[node][0]].params["name"]
 
     def solve(self, *, vtol=1e-5, itol=1e-6, maxiter=1000, quiet=True):
         """Analyze system"""
@@ -388,41 +371,26 @@ class System:
             return None
 
         # calculate results for each node
-        names, parent, typ, pwr, loss, eff, warn, vsi, iso = (
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
-        for n in self.__nodes:  # [vi, vo, ii, io]
+        names, parent, typ, pwr, loss = [], [], [], [], []
+        eff, warn, vsi, iso = [], [], [], []
+        for n in self.__topo_nodes:  # [vi, vo, ii, io]
             names += [self.g[n].params["name"]]
             vi = v[n]
             vo = v[n]
             ii = i[n]
             io = i[n]
+            p = self.__parents[n]
 
-            if n == 0:  # root
-                # parent += ['']
-                # print(n, v[n], v[n], i[n], i[n], p, l)
+            if p == -1:  # root
                 vi = v[n] + self.g[n].params["rs"] * ii
-            elif self.__leaves[n] == 1:  # leaf
-                vi = v[self.__parents[n]]
+            elif self.__childs[n] == -1:  # leaf
+                vi = v[p[0]]
                 io = 0.0
-                # parent += [self.g[self.__parents[n]].params['name']]
-                # print(n, v[n], 0.0, i[n], 0.0, p, l)
             else:
                 io = 0.0
-                for c in self.__childs_f[n]:
+                for c in self.__childs[n]:
                     io += i[c]
-                vi = v[self.__parents[n]]
-                # parent += [self.g[self.__parents[n]].params['name']]
-                # print(n, v[self.__parents[n]], v[n], i[n], isum, p, l)
-
+                vi = v[p[0]]
             parent += [self.__get_parent_name(n)]
             p, l, e = self.g[n]._solv_pwr_loss(vi, vo, ii, io)
             pwr += [p]
@@ -436,7 +404,7 @@ class System:
         # remove unused node indices
         vso, isi = [], []
         for n in range(len(v)):
-            if n in self.__nodes:
+            if n in self.__topo_nodes:
                 vso += [v[n]]
                 isi += [i[n]]
 
@@ -481,14 +449,10 @@ class System:
     def params(self, limits=False):
         """Return element parameters"""
         self.__rel_update()
-        # print(self.__parents)
-        # print(self.__childs_f)
-        # extract params
-
         names, typ, parent, vo, vdrop = [], [], [], [], []
         iq, rs, eff, ii, pwr = [], [], [], [], []
         lii, lio, lvi, lvo = [], [], [], []
-        for n in self.__nodes:
+        for n in self.__topo_nodes:
             names += [self.g[n].params["name"]]
             typ += [self.g[n].element_type.name]
             _vo, _vdrop, _iq, _rs, _eff, _ii, _pwr = "", "", "", "", "", "", ""
@@ -556,11 +520,10 @@ class System:
                 "limits": self.g[0].limits,
             },
         }
-        tree = self.__get_childs(rev=False)
+        tree = self.__get_childs_tree()
         cdict = {}
         if tree != {}:
             for e in tree:
-                # print(self.g[e].params['name'], tree[e])
                 childs = []
                 for c in tree[e]:
                     childs += [
@@ -571,7 +534,6 @@ class System:
                         }
                     ]
                 cdict[self.g[e].params["name"]] = childs
-                # cdict[]
         sys["childs"] = cdict
 
         with open(fname, "w") as f:

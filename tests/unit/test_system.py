@@ -53,6 +53,9 @@ def test_case1():
         0.793669,
         rtol=1e-6,
     ), "Case1 efficiency"
+    assert (
+        df[df["Element"] == "System total"]["Warnings"][9] == "None"
+    ), "Case 1 warnings"
     case1.save("tests/unit/case1.json")
     dfp = case1.params(limits=True)
     assert len(dfp) == 9, "Case1 parameters row count"
@@ -174,3 +177,22 @@ def test_case11():
     case11.del_element("1.8V buck")
     dfp = case11.params()
     assert len(dfp) == 2, "Case11 parameters row count"
+
+
+def test_case12():
+    """Warnings"""
+    case12 = System(
+        "Case12 system",
+        Source(
+            "6V",
+            vo=6.0,
+            limits={
+                "ii": [0.0, 0.101],
+            },
+        ),
+    )
+    case12.add_element("6V", element=ILoad("Overload", ii=0.1011))
+    df = case12.solve()
+    assert (
+        df[df["Element"] == "System total"]["Warnings"][2] == "Yes"
+    ), "Case 12 warnings"
