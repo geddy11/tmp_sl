@@ -25,9 +25,9 @@ import numpy as np
 from rich.tree import Tree
 import json
 import pandas as pd
-from sysloss.elements import *
-from sysloss.elements import (
-    ElementTypes,
+from sysloss.components import *
+from sysloss.components import (
+    ComponentTypes,
     _get_opt,
     _get_mand,
     RS_DEFAULT,
@@ -41,13 +41,13 @@ class System:
     def __init__(self, name: str, source):
         self.g = None
         if not isinstance(source, Source):
-            raise ValueError("Error: First element of system must be a source!")
-        else:
-            self.g = rx.PyDAG(check_cycle=True, multigraph=False, attrs={})
-            pidx = self.g.add_node(source)
-            self.g.attrs["name"] = name
-            self.g.attrs["nodes"] = {}
-            self.g.attrs["nodes"][source.params["name"]] = pidx
+            raise ValueError("Error: First component of system must be a source!")
+
+        self.g = rx.PyDAG(check_cycle=True, multigraph=False, attrs={})
+        pidx = self.g.add_node(source)
+        self.g.attrs["name"] = name
+        self.g.attrs["nodes"] = {}
+        self.g.attrs["nodes"][source.params["name"]] = pidx
 
     @classmethod
     def from_file(cls, fname: str):
@@ -73,48 +73,40 @@ class System:
                     if c["type"] == "CONVERTER":
                         vo = _get_mand(c["params"], "vo")
                         eff = _get_mand(c["params"], "eff")
-                        self.add_element(
+                        self.add_comp(
                             p,
-                            element=Converter(
-                                cname, vo=vo, eff=eff, iq=iq, limits=limits
-                            ),
+                            comp=Converter(cname, vo=vo, eff=eff, iq=iq, limits=limits),
                         )
                     elif c["type"] == "LINREG":
                         vo = _get_mand(c["params"], "vo")
                         vdrop = _get_opt(c["params"], "vdrop", 0.0)
-                        self.add_element(
+                        self.add_comp(
                             p,
-                            element=LinReg(
+                            comp=LinReg(
                                 cname, vo=vo, vdrop=vdrop, iq=iq, limits=limits
                             ),
                         )
                     elif c["type"] == "LOSS":
                         rs = _get_mand(c["params"], "rs")
                         vdrop = _get_mand(c["params"], "vdrop")
-                        self.add_element(
-                            p, element=Loss(cname, rs=rs, vdrop=vdrop, limits=limits)
+                        self.add_comp(
+                            p, comp=Loss(cname, rs=rs, vdrop=vdrop, limits=limits)
                         )
                     elif c["type"] == "LOAD":
                         if "pwr" in c["params"]:
                             pwr = _get_mand(c["params"], "pwr")
-                            self.add_element(
-                                p, element=PLoad(cname, pwr=pwr, limits=limits)
-                            )
+                            self.add_comp(p, comp=PLoad(cname, pwr=pwr, limits=limits))
                         elif "rs" in c["params"]:
                             rs = _get_mand(c["params"], "rs")
-                            self.add_element(
-                                p, element=RLoad(cname, rs=rs, limits=limits)
-                            )
+                            self.add_comp(p, comp=RLoad(cname, rs=rs, limits=limits))
                         else:
                             ii = _get_mand(c["params"], "ii")
-                            self.add_element(
-                                p, element=ILoad(cname, ii=ii, limits=limits)
-                            )
+                            self.add_comp(p, comp=ILoad(cname, ii=ii, limits=limits))
 
         return self
 
     def __get_index(self, name: str):
-        """Get node index from element name"""
+        """Get node index from component name"""
         if name in self.g.attrs["nodes"]:
             return self.g.attrs["nodes"][name]
 
@@ -128,10 +120,10 @@ class System:
         return True
 
     def __chk_name(self, name: str):
-        """Check if element name is valid"""
+        """Check if component name is valid"""
         # check if name exists
         if name in self.g.attrs["nodes"].keys():
-            raise ValueError('Error: Element name "{}" is already used!'.format(name))
+            raise ValueError('Error: Component name "{}" is already used!'.format(name))
 
         return True
 
@@ -151,10 +143,7 @@ class System:
 
     def __get_nodes(self):
         """Get list of nodes in system"""
-        nodes = []
-        for n in self.g.nodes():
-            nodes += [self.g.attrs["nodes"][n.params["name"]]]
-        return sorted(nodes)
+        return [n for n in self.g.node_indices()]
 
     def __get_childs(self):
         """Get list of children of each node"""
@@ -176,6 +165,11 @@ class System:
                 ps[n] = ind
         return ps
 
+    def __get_sources(self):
+        """Get list of sources"""
+        tn = [n for n in rx.topological_sort(self.g)]
+        return [n for n in tn if isinstance(self.g[n], Source)]
+
     def __get_topo_sort(self):
         """Get nodes topological sorted"""
         tps = rx.topological_sort(self.g)
@@ -195,50 +189,59 @@ class System:
             tree.add(self.__make_rtree(adj, child))
         return tree
 
-    def add_element(self, parent: str, *, element):
-        """Add element to system"""
+    def add_comp(self, parent: str, *, comp):
+        """Add component to system"""
         # check that parent exists
         self.__chk_parent(parent)
-        # check that element name is unique
-        self.__chk_name(element.params["name"])
+        # check that component name is unique
+        self.__chk_name(comp.params["name"])
 
         pidx = self.__get_index(parent)
 
-        # check that parent allows element type as child
-        if not element.element_type in self.g[pidx].child_types:
+        # check that parent allows component type as child
+        if not comp.component_type in self.g[pidx].child_types:
             raise ValueError(
                 "Error: Parent does not allow child of type {}!".format(
-                    element.element_type.name
+                    comp.component_type.name
                 )
             )
-        cidx = self.g.add_child(pidx, element, None)
-        self.g.attrs["nodes"][element.params["name"]] = cidx
+        cidx = self.g.add_child(pidx, comp, None)
+        self.g.attrs["nodes"][comp.params["name"]] = cidx
 
-    def change_element(self, name: str, *, element):
-        """Replace element with a new one"""
-        # if element name changes, check that it is unique
-        if name != element.params["name"]:
-            self.__chk_name(element.params["name"])
+    def add_source(self, source):
+        """Add new source"""
+        self.__chk_name(source.params["name"])
+        if not isinstance(source, Source):
+            raise ValueError("Error: Component must be a source!")
+
+        pidx = self.g.add_node(source)
+        self.g.attrs["nodes"][source.params["name"]] = pidx
+
+    def change_comp(self, name: str, *, comp):
+        """Replace component with a new one"""
+        # if component name changes, check that it is unique
+        if name != comp.params["name"]:
+            self.__chk_name(comp.params["name"])
 
         eidx = self.__get_index(name)
-        # check that parent allows element type as child
+        # check that parent allows component type as child
         parents = self.__get_parents()
         if parents[eidx] != -1:
-            if not element.element_type in self.g[parents[eidx][0]].child_types:
+            if not comp.component_type in self.g[parents[eidx][0]].child_types:
                 raise ValueError(
                     "Error: Parent does not allow child of type {}!".format(
-                        element.element_type.name
+                        comp.component_type.name
                     )
                 )
-        self.g[eidx] = element
+        self.g[eidx] = comp
         # replace node name in graph dict
         del [self.g.attrs["nodes"][name]]
-        self.g.attrs["nodes"][element.params["name"]] = eidx
+        self.g.attrs["nodes"][comp.params["name"]] = eidx
 
-    def del_element(self, name: str, *, del_childs: bool = True):
+    def del_comp(self, name: str, *, del_childs: bool = True):
         eidx = self.__get_index(name)
         if eidx == -1:
-            raise ValueError("Error: Element name does not exist!")
+            raise ValueError("Error: Component name does not exist!")
         parents = self.__get_parents()
         if parents[eidx] == -1:
             raise ValueError("Error: Cannot delete source node!")
@@ -246,9 +249,9 @@ class System:
         # if not leaf, check if child type is allowed by parent type (not possible?)
         # if leaves[eidx] == 0:
         #     for c in childs[eidx]:
-        #         if not self.g[c].element_type in self.g[parents[eidx]].child_types:
+        #         if not self.g[c].component_type in self.g[parents[eidx]].child_types:
         #             raise ValueError(
-        #                 "Error: Parent and child of element are not compatible!"
+        #                 "Error: Parent and child of component are not compatible!"
         #             )
         # delete childs first if selected
         if del_childs:
@@ -269,18 +272,23 @@ class System:
         """Print tree structure, starting from node name"""
         if not name == "":
             if not name in self.g.attrs.keys():
-                raise ValueError("Error: Element name is not valid!")
+                raise ValueError("Error: Component name is not valid!")
+            root = [name]
         else:
-            root = self.g[0].params["name"]
+            ridx = self.__get_sources()
+            root = [self.g[n].params["name"] for n in ridx]
 
-        adj = rx.bfs_successors(self.g, self.g.attrs["nodes"][root])
-        ndict = {}
-        for i in adj:
-            c = []
-            for j in i[1]:
-                c += [j.params["name"]]
-            ndict[i[0].params["name"]] = c
-        return self.__make_rtree(ndict, root)
+        t = Tree(self.g.attrs["name"])
+        for n in root:
+            adj = rx.bfs_successors(self.g, self.g.attrs["nodes"][n])
+            ndict = {}
+            for i in adj:
+                c = []
+                for j in i[1]:
+                    c += [j.params["name"]]
+                ndict[i[0].params["name"]] = c
+            t.add(self.__make_rtree(ndict, n))
+        return t
 
     def __sys_init(self):
         """Create vectors of init values for solver"""
@@ -306,7 +314,7 @@ class System:
                 isum = 0
                 for c in self.__childs[n]:
                     isum += i[c]
-                if n == 0:  # root
+                if p == -1:  # root
                     vo[n] = self.g[n]._solv_outp_volt(0.0, 0.0, isum)
                 else:
                     vo[n] = self.g[n]._solv_outp_volt(v[p[0]], i[n], isum)
@@ -335,7 +343,7 @@ class System:
         return ii
 
     def __rel_update(self):
-        """Update lists with element relationships"""
+        """Update lists with component relationships"""
         self.__parents = self.__get_parents()
         self.__childs = self.__get_childs()
         self.__topo_nodes = self.__get_topo_sort()
@@ -373,8 +381,12 @@ class System:
         # calculate results for each node
         names, parent, typ, pwr, loss = [], [], [], [], []
         eff, warn, vsi, iso = [], [], [], []
+        domain, dname = [], "none"
         for n in self.__topo_nodes:  # [vi, vo, ii, io]
             names += [self.g[n].params["name"]]
+            if self.g[n].component_type.name == "SOURCE":
+                dname = self.g[n].params["name"]
+            domain += [dname]
             vi = v[n]
             vo = v[n]
             ii = i[n]
@@ -396,23 +408,24 @@ class System:
             pwr += [p]
             loss += [l]
             eff += [e]
-            typ += [self.g[n].element_type.name]
+            typ += [self.g[n].component_type.name]
             warn += [self.g[n]._solv_get_warns(vi, vo, ii, io)]
             vsi += [vi]
             iso += [io]
 
         # remove unused node indices
         vso, isi = [], []
-        for n in range(len(v)):
-            if n in self.__topo_nodes:
+        for n in self.__topo_nodes:
+            if n in self.__get_nodes():
                 vso += [v[n]]
                 isi += [i[n]]
 
         # report
         res = {}
-        res["Element"] = names
+        res["Component"] = names
         res["Type"] = typ
         res["Parent"] = parent
+        res["Domain"] = domain
         res["Vin (V)"] = vsi
         res["Vout (V)"] = vso
         res["Iin (A)"] = isi
@@ -434,10 +447,11 @@ class System:
             "System total",
             "",
             "",
-            vsi[0],
-            0.0,
+            "",
+            "",
+            "",
             i[0],
-            0.0,
+            "",
             tpwr,
             tloss,
             eff,
@@ -447,34 +461,38 @@ class System:
         return df
 
     def params(self, limits=False):
-        """Return element parameters"""
+        """Return component parameters"""
         self.__rel_update()
         names, typ, parent, vo, vdrop = [], [], [], [], []
         iq, rs, eff, ii, pwr = [], [], [], [], []
         lii, lio, lvi, lvo = [], [], [], []
+        domain, dname = [], "none"
         for n in self.__topo_nodes:
             names += [self.g[n].params["name"]]
-            typ += [self.g[n].element_type.name]
+            typ += [self.g[n].component_type.name]
+            if self.g[n].component_type.name == "SOURCE":
+                dname = self.g[n].params["name"]
+            domain += [dname]
             _vo, _vdrop, _iq, _rs, _eff, _ii, _pwr = "", "", "", "", "", "", ""
-            if self.g[n].element_type == ElementTypes.SOURCE:
+            if self.g[n].component_type == ComponentTypes.SOURCE:
                 _vo = self.g[n].params["vo"]
                 _rs = self.g[n].params["rs"]
-            elif self.g[n].element_type == ElementTypes.LOAD:
+            elif self.g[n].component_type == ComponentTypes.LOAD:
                 if "pwr" in self.g[n].params:
                     _pwr = self.g[n].params["pwr"]
                 elif "rs" in self.g[n].params:
                     _rs = self.g[n].params["rs"]
                 else:
                     _ii = self.g[n].params["ii"]
-            elif self.g[n].element_type == ElementTypes.CONVERTER:
+            elif self.g[n].component_type == ComponentTypes.CONVERTER:
                 _vo = self.g[n].params["vo"]
                 _iq = self.g[n].params["iq"]
                 _eff = self.g[n].params["eff"]
-            elif self.g[n].element_type == ElementTypes.LINREG:
+            elif self.g[n].component_type == ComponentTypes.LINREG:
                 _vo = self.g[n].params["vo"]
                 _vdrop = self.g[n].params["vdrop"]
                 _iq = self.g[n].params["iq"]
-            elif self.g[n].element_type == ElementTypes.LOSS:
+            elif self.g[n].component_type == ComponentTypes.LOSS:
                 _vdrop = self.g[n].params["vdrop"]
                 _rs = self.g[n].params["rs"]
             vo += [_vo]
@@ -492,9 +510,10 @@ class System:
                 lvo += [self.g[n].limits["vo"]]
         # report
         res = {}
-        res["Element"] = names
+        res["Component"] = names
         res["Type"] = typ
         res["Parent"] = parent
+        res["Domain"] = domain
         res["vo (V)"] = vo
         res["vdrop (V)"] = vdrop
         res["iq (A)"] = iq
@@ -515,7 +534,7 @@ class System:
         sys = {
             "name": self.g.attrs["name"],
             "root": {
-                "type": self.g[0].element_type.name,
+                "type": self.g[0].component_type.name,
                 "params": self.g[0].params,
                 "limits": self.g[0].limits,
             },
@@ -528,7 +547,7 @@ class System:
                 for c in tree[e]:
                     childs += [
                         {
-                            "type": self.g[c].element_type.name,
+                            "type": self.g[c].component_type.name,
                             "params": self.g[c].params,
                             "limits": self.g[c].limits,
                         }

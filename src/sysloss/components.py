@@ -27,8 +27,8 @@ __all__ = ["Source", "ILoad", "PLoad", "RLoad", "Loss", "Converter", "LinReg"]
 
 
 @unique
-class ElementTypes(Enum):
-    """Element types"""
+class ComponentTypes(Enum):
+    """Component types"""
 
     SOURCE = 1
     LOAD = 2
@@ -74,24 +74,24 @@ def _get_warns(limits, checks):
     return warn
 
 
-class ElementMeta(type):
-    """An element metaclass that will be used for element class creation."""
+class ComponentMeta(type):
+    """An component metaclass that will be used for component class creation."""
 
     def __instancecheck__(cls, instance):
         return cls.__subclasscheck__(type(instance))
 
     def __subclasscheck__(cls, subclass):
         return (
-            hasattr(subclass, "element_type")
+            hasattr(subclass, "component_type")
             and hasattr(subclass, "child_types")
             and hasattr(subclass, "from_file")
             and callable(subclass.from_file)
         )
 
 
-class ElementInterface(metaclass=ElementMeta):
-    """This interface is used for concrete element classes to inherit from.
-    There is no need to define the ElementMeta methods of any class
+class ComponentInterface(metaclass=ComponentMeta):
+    """This interface is used for concrete component classes to inherit from.
+    There is no need to define the ComponentMeta methods of any class
     as they are implicitly made available via .__subclasscheck__().
     """
 
@@ -99,25 +99,25 @@ class ElementInterface(metaclass=ElementMeta):
 
 
 class Source:
-    """The Source element must the root of a system.
+    """The Source component must the root of a system.
     A system can only have one source.
 
     Attributes
     ----------
-    element_type : ElementTypes.SOURCE (enum)
-        type of element
+    component_type : ComponentTypes.SOURCE (enum)
+        type of component
     """
 
     @property
-    def element_type(self):
-        """Defines the element type"""
-        return ElementTypes.SOURCE
+    def component_type(self):
+        """Defines the component type"""
+        return ComponentTypes.SOURCE
 
     @property
     def child_types(self):
-        """Defines allowable child element types"""
-        et = list(ElementTypes)
-        et.remove(ElementTypes.SOURCE)
+        """Defines allowable child component types"""
+        et = list(ComponentTypes)
+        et.remove(ComponentTypes.SOURCE)
         return et
 
     def __init__(
@@ -153,15 +153,15 @@ class Source:
         return self.params["vo"]
 
     def _solv_inp_curr(self, vi, vo, io):
-        """Calculate element input current from vi, vo and io"""
+        """Calculate component input current from vi, vo and io"""
         return io
 
     def _solv_outp_volt(self, vi, ii, io):
-        """Calculate element output voltage from vi, ii and io"""
+        """Calculate component output voltage from vi, ii and io"""
         return self.params["vo"] - self.params["rs"] * io
 
     def _solv_pwr_loss(self, vi, vo, ii, io):
-        """Calculate power and loss in element"""
+        """Calculate power and loss in component"""
         pwr = abs(vo * io)
         loss = self.params["rs"] * io * io
         if pwr > 0.0:
@@ -174,22 +174,22 @@ class Source:
 
 
 class PLoad:
-    """The Load element .
+    """The Load component .
 
     Attributes
     ----------
-    element_type : ElementTypes.LOAD (enum)
-        type of element
+    component_type : ComponentTypes.LOAD (enum)
+        type of component
     """
 
     @property
-    def element_type(self):
-        """Defines the element type"""
-        return ElementTypes.LOAD
+    def component_type(self):
+        """Defines the component type"""
+        return ComponentTypes.LOAD
 
     @property
     def child_types(self):
-        """The Load element cannot have childs"""
+        """The Load component cannot have childs"""
         return [None]
 
     def __init__(self, name: str, *, pwr: float, limits: dict = LIMITS_DEFAULT):
@@ -216,7 +216,7 @@ class PLoad:
         return 0.0
 
     def _solv_inp_curr(self, vi, vo, io):
-        """Calculate element input current from vi, vo and io"""
+        """Calculate component input current from vi, vo and io"""
         if vi != 0.0:
             return self.params["pwr"] / abs(vi)
         return 0.0
@@ -226,7 +226,7 @@ class PLoad:
         return 0.0
 
     def _solv_pwr_loss(self, vi, vo, ii, io):
-        """Calculate power and loss in element"""
+        """Calculate power and loss in component"""
         return abs(vi * ii), 0.0, 100.0
 
     def _solv_get_warns(self, vi, vo, ii, io):
@@ -235,12 +235,12 @@ class PLoad:
 
 
 class ILoad(PLoad):
-    """The Load element .
+    """The Load component .
 
     Attributes
     ----------
-    element_type : ElementTypes.LOAD (enum)
-        type of element
+    component_type : ComponentTypes.LOAD (enum)
+        type of component
     """
 
     def __init__(self, name: str, *, ii: float, limits: dict = LIMITS_DEFAULT):
@@ -268,12 +268,12 @@ class ILoad(PLoad):
 
 
 class RLoad(PLoad):
-    """The Load element .
+    """The Load component .
 
     Attributes
     ----------
-    element_type : ElementTypes.LOAD (enum)
-        type of element
+    component_type : ComponentTypes.LOAD (enum)
+        type of component
     """
 
     def __init__(self, name: str, *, rs: float, limits: dict = LIMITS_DEFAULT):
@@ -300,25 +300,25 @@ class RLoad(PLoad):
 
 
 class Loss:
-    """The Loss element
+    """The Loss component
 
     Attributes
     ----------
-    element_type : ElementTypes.LOSS (enum)
-        type of element
+    component_type : ComponentTypes.LOSS (enum)
+        type of component
 
     """
 
     @property
-    def element_type(self):
-        """Defines the element type"""
-        return ElementTypes.LOSS
+    def component_type(self):
+        """Defines the component type"""
+        return ComponentTypes.LOSS
 
     @property
     def child_types(self):
-        """Defines allowable child element types"""
-        et = list(ElementTypes)
-        et.remove(ElementTypes.SOURCE)
+        """Defines allowable child component types"""
+        et = list(ComponentTypes)
+        et.remove(ComponentTypes.SOURCE)
         return et
 
     def __init__(
@@ -354,18 +354,18 @@ class Loss:
         return 0.0
 
     def _solv_inp_curr(self, vi, vo, io):
-        """Calculate element input current from vi, vo and io"""
+        """Calculate component input current from vi, vo and io"""
         return io  # TODO: iq?
 
     def _solv_outp_volt(self, vi, ii, io):
-        """Calculate element output voltage from vi, ii and io"""
+        """Calculate component output voltage from vi, ii and io"""
         if vi >= 0.0:
             return vi - self.params["rs"] * io - self.params["vdrop"]
         else:
             return vi + self.params["rs"] * io + self.params["vdrop"]
 
     def _solv_pwr_loss(self, vi, vo, ii, io):
-        """Calculate power and loss in element"""
+        """Calculate power and loss in component"""
         loss = abs(self.params["rs"] * ii * ii + self.params["vdrop"] * ii)
         pwr = abs(vi * ii)
         if pwr > 0.0:
@@ -378,24 +378,24 @@ class Loss:
 
 
 class Converter:
-    """The Converter element
+    """The Converter component
 
     Attributes
     ----------
-    element_type : ElementTypes.LOSS (enum)
-        type of element
+    component_type : ComponentTypes.LOSS (enum)
+        type of component
     """
 
     @property
-    def element_type(self):
-        """Defines the element type"""
-        return ElementTypes.CONVERTER
+    def component_type(self):
+        """Defines the component type"""
+        return ComponentTypes.CONVERTER
 
     @property
     def child_types(self):
-        """Defines allowable child element types"""
-        et = list(ElementTypes)
-        et.remove(ElementTypes.SOURCE)
+        """Defines allowable child component types"""
+        et = list(ComponentTypes)
+        et.remove(ComponentTypes.SOURCE)
         return et
 
     def __init__(
@@ -438,18 +438,18 @@ class Converter:
         return self.params["vo"]
 
     def _solv_inp_curr(self, vi, vo, io):
-        """Calculate element input current from vi, vo and io"""
+        """Calculate component input current from vi, vo and io"""
         ve = self.params["eff"] * vi
         if ve > 0.0:
             return self.params["iq"] + abs(vo * io / ve)
         return 0.0
 
     def _solv_outp_volt(self, vi, ii, io):
-        """Calculate element output voltage from vi, ii and io"""
+        """Calculate component output voltage from vi, ii and io"""
         return self.params["vo"]
 
     def _solv_pwr_loss(self, vi, vo, ii, io):
-        """Calculate power and loss in element"""
+        """Calculate power and loss in component"""
         loss = abs(
             self.params["iq"] * vi
             + (ii - self.params["iq"]) * vi * (1.0 - self.params["eff"])
@@ -465,24 +465,24 @@ class Converter:
 
 
 class LinReg:
-    """The Linear regulator element
+    """The Linear regulator component
 
     Attributes
     ----------
-    element_type : ElementTypes.LINREG (enum)
-        type of element
+    component_type : ComponentTypes.LINREG (enum)
+        type of component
     """
 
     @property
-    def element_type(self):
-        """Defines the element type"""
-        return ElementTypes.LINREG
+    def component_type(self):
+        """Defines the component type"""
+        return ComponentTypes.LINREG
 
     @property
     def child_types(self):
-        """Defines allowable child element types"""
-        et = list(ElementTypes)
-        et.remove(ElementTypes.SOURCE)
+        """Defines allowable child component types"""
+        et = list(ComponentTypes)
+        et.remove(ComponentTypes.SOURCE)
         return et
 
     def __init__(
@@ -523,18 +523,18 @@ class LinReg:
         return self.params["vo"]
 
     def _solv_inp_curr(self, vi, vo, io):
-        """Calculate element input current from vi, vo and io"""
+        """Calculate component input current from vi, vo and io"""
         return io + self.params["iq"]
 
     def _solv_outp_volt(self, vi, ii, io):
-        """Calculate element output voltage from vi, ii and io"""
+        """Calculate component output voltage from vi, ii and io"""
         v = min(abs(self.params["vo"]), max(abs(vi) - self.params["vdrop"], 0.0))
         if self.params["vo"] >= 0.0:
             return v
         return -v
 
     def _solv_pwr_loss(self, vi, vo, ii, io):
-        """Calculate power and loss in element"""
+        """Calculate power and loss in component"""
         loss = (abs(vi) - abs(vo)) * io + abs(vi) * self.params["iq"]
         pwr = abs(vi * ii)
         if pwr > 0.0:
