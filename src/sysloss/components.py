@@ -74,6 +74,13 @@ def _get_warns(limits, checks):
     return warn
 
 
+def _get_eff(pwr, loss, def_loss=100.0):
+    """Calculate efficiency in %"""
+    if pwr > 0.0:
+        return ((pwr - loss) / pwr) * 100.0
+    return def_loss
+
+
 class ComponentMeta(type):
     """An component metaclass that will be used for component class creation."""
 
@@ -164,13 +171,11 @@ class Source:
         """Calculate power and loss in component"""
         pwr = abs(vo * io)
         loss = self.params["rs"] * io * io
-        if pwr > 0.0:
-            return pwr, loss, (pwr - loss) / pwr
-        return pwr, loss, 100.0
+        return pwr, loss, _get_eff(pwr, loss)
 
     def _solv_get_warns(self, vi, vo, ii, io):
         """Check limits"""
-        return _get_warns(self.limits, {"ii": ii})
+        return _get_warns(self.limits, {"ii": ii, "io": io})
 
 
 class PLoad:
@@ -368,13 +373,11 @@ class Loss:
         """Calculate power and loss in component"""
         loss = abs(self.params["rs"] * ii * ii + self.params["vdrop"] * ii)
         pwr = abs(vi * ii)
-        if pwr > 0.0:
-            return 0.0, loss, (pwr - loss) / pwr
-        return 0.0, loss, 0.0
+        return 0.0, loss, _get_eff(pwr, loss, 0.0)
 
     def _solv_get_warns(self, vi, vo, ii, io):
         """Check limits"""
-        return _get_warns(self.limits, {"vi": vi, "vo": vo, "ii": ii, "io": ii})
+        return _get_warns(self.limits, {"vi": vi, "vo": vo, "ii": ii, "io": io})
 
 
 class Converter:
@@ -455,13 +458,11 @@ class Converter:
             + (ii - self.params["iq"]) * vi * (1.0 - self.params["eff"])
         )
         pwr = abs(vi * ii)
-        if pwr > 0.0:
-            return 0.0, loss, (pwr - loss) / pwr
-        return 0.0, loss, 0.0
+        return 0.0, loss, _get_eff(pwr, loss, 0.0)
 
     def _solv_get_warns(self, vi, vo, ii, io):
         """Check limits"""
-        return _get_warns(self.limits, {"vi": vi, "vo": vo, "ii": ii, "io": ii})
+        return _get_warns(self.limits, {"vi": vi, "vo": vo, "ii": ii, "io": io})
 
 
 class LinReg:
@@ -537,10 +538,8 @@ class LinReg:
         """Calculate power and loss in component"""
         loss = (abs(vi) - abs(vo)) * io + abs(vi) * self.params["iq"]
         pwr = abs(vi * ii)
-        if pwr > 0.0:
-            return 0.0, loss, (pwr - loss) / pwr
-        return 0.0, loss, 0.0
+        return 0.0, loss, _get_eff(pwr, loss, 0.0)
 
     def _solv_get_warns(self, vi, vo, ii, io):
         """Check limits"""
-        return _get_warns(self.limits, {"vi": vi, "vo": vo, "ii": ii, "io": ii})
+        return _get_warns(self.limits, {"vi": vi, "vo": vo, "ii": ii, "io": io})

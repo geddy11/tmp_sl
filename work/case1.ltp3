@@ -1,21 +1,14 @@
 <Vers> 3.6.0
 <Tabs> 1, #FFFDF5E6, New Tab 1
 <Summ> 0, 0, 24, #FF000000, #00FFFFFF
-<BPrt> Power, 1, 55, 310, Power 1
+<BPrt> Power, 1, 330, 25, 3V coin
 	Color   : #00FFFFFF
 	Width   : 80
 	Height  : 60
 	VisType : 1
 <Term> Output, 1
 	Vout    : 3
-<BPrt> Resistor, 2, 230, 310, Resistor 2
-	Color   : #FFBC8F8F
-	Width   : 80
-	Height  : 60
-	Resstnce: 33
-<Term> Input, 1
-<Term> Output, 1
-<BPrt> Converter, 5, 435, 310, Buck 1.8
+<BPrt> Converter, 5, 710, 25, Buck 1.8
 	Color   : #FFFFDAB9
 	Width   : 160
 	Height  : 60
@@ -25,14 +18,14 @@
 <Term> Output, 1
 	Vout    : 1.8
 	NomEff  : 87
-<BPrt> Load, 8, 710, 310, MCU
+<BPrt> Load, 8, 985, 25, MCU
 	Color   : #FFFFB6C1
 	Width   : 80
 	Height  : 60
 	VisType : 2
 <Term> Input, 1
 	Ipeak   : 0.015
-<BPrt> Converter, 11, 230, 495, Boost 5V
+<BPrt> Converter, 11, 505, 210, Boost 5V
 	Color   : #FFFFDAB9
 	Width   : 140
 	Height  : 60
@@ -42,7 +35,7 @@
 <Term> Output, 1
 	Vout    : 5
 	NomEff  : 91
-<BPrt> Load, 12, 405, 395, Buck Iq
+<BPrt> Load, 12, 680, 110, Buck Iq
 	Color   : #FFFFB6C1
 	Width   : 80
 	Height  : 60
@@ -50,7 +43,7 @@
 <Term> Input, 1
 	Ipeak   : 12
 	IpeakU  : -6
-<BPrt> Load, 15, 230, 600, Boost Iq
+<BPrt> Load, 15, 505, 315, Boost Iq
 	Color   : #FFFFB6C1
 	Width   : 80
 	Height  : 60
@@ -58,24 +51,17 @@
 <Term> Input, 1
 	Ipeak   : 42
 	IpeakU  : -6
-<BPrt> LDO, 20, 480, 495, Linreg
+<BPrt> LDO, 20, 905, 210, Linreg
 	Color   : #FFBDB76B
 	Width   : 140
 	Height  : 60
+	Ignd    : 0.15
 	VisType : 1
 <Term> Input, 1
 <Term> Output, 1
 	Vout    : 2.5
 	IoutMin : 0
-<BPrt> Load, 21, 480, 600, Linreg Iq
-	Color   : #FFFFB6C1
-	Width   : 80
-	Height  : 60
-	VisType : 2
-<Term> Input, 1
-	Ipeak   : 150
-	IpeakU  : -6
-<BPrt> Load, 26, 710, 495, ADC
+<BPrt> Load, 26, 1135, 210, ADC
 	Color   : #FFFFB6C1
 	Width   : 80
 	Height  : 60
@@ -83,22 +69,58 @@
 <Term> Input, 1
 	Ipeak   : 6
 	IpeakU  : -3
+<BPrt> Resistor, 32, 750, 210, Resistor 32
+	Color   : #FFBC8F8F
+	Width   : 80
+	Height  : 60
+	Resstnce: 33
+<Term> Input, 1
+<Term> Output, 1
+<BPrt> Load, 37, 1195, 280, Sensor
+	Color   : #FFFFB6C1
+	Width   : 80
+	Height  : 60
+	VisType : 2
+<Term> Input, 1
+	Inom    : 15
+	InomU   : -3
+	LoadType: False
+<BPrt> Load, 41, 750, 345, Res divider
+	Color   : #FFFFB6C1
+	Width   : 80
+	Height  : 60
+	VisType : 2
+<Term> Input, 1
+	Inom    : 25
+	InomU   : -6
+	LoadType: False
+<BPrt> Power, 44, 330, 425, 12V
+	Color   : #00FFFFFF
+	Width   : 80
+	Height  : 60
+	VisType : 1
+<Term> Output, 1
+<BPrt> Load, 45, 505, 425, Fan
+	Color   : #FFFFB6C1
+	Width   : 80
+	Height  : 60
+	VisType : 2
+<Term> Input, 1
+	Inom    : 0.00833333
+	LoadType: False
+<Symb> Rectangle, 0, 0, 0, 0,0, 0,0
+	Thicknss: 24
 <Symb> SummaryReport, 0, 0, 0, 0,0, 0,0
+	Color   : #FF000000
+	Color2  : #00FFFFFF
 	Thicknss: 24
 <Wire> 4, 3
 	ZIndex  : -1
 	STermPID: 1
 	STermTyp: Output
 	STermNum: 1
-	EWires  : 17, 19
-	Points  : (135,340)(180,340)
-<Wire> 7, 6
-	ZIndex  : -1
-	STermPID: 2
-	STermTyp: Output
-	STermNum: 1
-	EWires  : 13, 14
-	Points  : (310,340)(350,340)
+	EWires  : 29, 30
+	Points  : (410,55)(455,55)
 <Wire> 10, 9
 	ZIndex  : -1
 	STermPID: 5
@@ -107,68 +129,28 @@
 	ETermPID: 8
 	ETermTyp: Input
 	ETermNum: 1
-	Points  : (595,340)(710,340)
-<Wire> 13, 6
+	Points  : (870,55)(985,55)
+<Wire> 13, 3
 	ZIndex  : -1
 	STermPID: 12
 	STermTyp: Input
 	STermNum: 1
-	EWires  : 7, 14
-	Points  : (405,425)(350,425)(350,340)
-<Wire> 14, 6
-	ZIndex  : -1
-	ETermPID: 5
-	ETermTyp: Input
-	ETermNum: 1
-	SWires  : 13, 7
-	Points  : (350,340)(435,340)
+	EWires  : 29, 31
+	Points  : (680,140)(625,140)(625,55)
 <Wire> 16, 3
 	ZIndex  : -1
 	STermPID: 11
 	STermTyp: Input
 	STermNum: 1
-	EWires  : 18, 19
-	Points  : (230,525)(180,525)
-<Wire> 17, 3
-	ZIndex  : -1
-	ETermPID: 2
-	ETermTyp: Input
-	ETermNum: 1
-	SWires  : 4, 19
-	Points  : (180,340)(230,340)
+	EWires  : 18, 30
+	Points  : (505,240)(455,240)
 <Wire> 18, 3
 	ZIndex  : -1
 	STermPID: 15
 	STermTyp: Input
 	STermNum: 1
-	EWires  : 16, 19
-	Points  : (230,630)(180,630)(180,525)
-<Wire> 19, 3
-	ZIndex  : -1
-	SWires  : 18, 16
-	EWires  : 4, 17
-	Points  : (180,525)(180,340)
-<Wire> 23, 22
-	ZIndex  : -1
-	STermPID: 20
-	STermTyp: Input
-	STermNum: 1
-	EWires  : 24, 25
-	Points  : (480,525)(405,525)
-<Wire> 24, 22
-	ZIndex  : -1
-	STermPID: 21
-	STermTyp: Input
-	STermNum: 1
-	EWires  : 23, 25
-	Points  : (480,630)(405,630)(405,525)
-<Wire> 25, 22
-	ZIndex  : -1
-	ETermPID: 11
-	ETermTyp: Output
-	ETermNum: 1
-	SWires  : 24, 23
-	Points  : (405,525)(370,525)
+	EWires  : 16, 30
+	Points  : (505,345)(455,345)(455,240)
 <Wire> 28, 27
 	ZIndex  : -1
 	STermPID: 20
@@ -177,4 +159,72 @@
 	ETermPID: 26
 	ETermTyp: Input
 	ETermNum: 1
-	Points  : (620,525)(710,525)
+	Points  : (1045,240)(1135,240)
+<Wire> 29, 3
+	ZIndex  : -1
+	SWires  : 4, 30
+	EWires  : 13, 31
+	Points  : (455,55)(625,55)
+<Wire> 30, 3
+	ZIndex  : -1
+	SWires  : 29, 4
+	EWires  : 18, 16
+	Points  : (455,55)(455,240)
+<Wire> 31, 3
+	ZIndex  : -1
+	ETermPID: 5
+	ETermTyp: Input
+	ETermNum: 1
+	SWires  : 29, 13
+	Points  : (625,55)(710,55)
+<Wire> 34, 33
+	ZIndex  : -1
+	STermPID: 11
+	STermTyp: Output
+	STermNum: 1
+	EWires  : 39, 43
+	Points  : (645,240)(680,240)
+<Wire> 36, 35
+	ZIndex  : -1
+	STermPID: 32
+	STermTyp: Output
+	STermNum: 1
+	ETermPID: 20
+	ETermTyp: Input
+	ETermNum: 1
+	Points  : (830,240)(905,240)
+<Wire> 38, 33
+	ZIndex  : -1
+	STermPID: 37
+	STermTyp: Input
+	STermNum: 1
+	EWires  : 42, 43
+	Points  : (1195,310)(680,310)
+<Wire> 39, 33
+	ZIndex  : -1
+	ETermPID: 32
+	ETermTyp: Input
+	ETermNum: 1
+	SWires  : 34, 43
+	Points  : (680,240)(750,240)
+<Wire> 42, 33
+	ZIndex  : -1
+	STermPID: 41
+	STermTyp: Input
+	STermNum: 1
+	EWires  : 38, 43
+	Points  : (750,375)(680,375)(680,310)
+<Wire> 43, 33
+	ZIndex  : -1
+	SWires  : 42, 38
+	EWires  : 34, 39
+	Points  : (680,310)(680,240)
+<Wire> 47, 46
+	ZIndex  : -1
+	STermPID: 45
+	STermTyp: Input
+	STermNum: 1
+	ETermPID: 44
+	ETermTyp: Output
+	ETermNum: 1
+	Points  : (505,455)(410,455)

@@ -44,12 +44,10 @@ def test_case1():
     assert len(df) == 10, "Case1 result row count"
     assert np.allclose(
         df[df["Component"] == "System total"]["Efficiency (%)"][9],
-        0.793669,
+        79.3625,
         rtol=1e-6,
     ), "Case1 efficiency"
-    assert (
-        df[df["Component"] == "System total"]["Warnings"][9] == "None"
-    ), "Case 1 warnings"
+    assert df[df["Component"] == "System total"]["Warnings"][9] == "", "Case 1 warnings"
     case1.save("tests/unit/case1.json")
     dfp = case1.params(limits=True)
     assert len(dfp) == 9, "Case1 parameters row count"
@@ -57,6 +55,8 @@ def test_case1():
     assert type(t) == rich.tree.Tree, "Case1 tree output"
     with pytest.raises(ValueError):
         case1.tree("Dummy")
+    t = case1.tree("5V boost")
+    assert type(t) == rich.tree.Tree, "Case1 subtree output"
 
     # reload system from json
     case1b = System.from_file("tests/unit/case1.json")
@@ -82,7 +82,7 @@ def test_case2():
     df = case2.solve()
     assert len(df) == 2, "Case2 result row count"
     assert (
-        df[df["Component"] == "System total"]["Efficiency (%)"][1] == 0.0
+        df[df["Component"] == "System total"]["Efficiency (%)"][1] == 100.0
     ), "Case2 efficiency"
 
 
@@ -97,7 +97,7 @@ def test_case3():
     df = case3.solve()
     assert len(df) == 4, "Case3 result row count"
     assert (
-        df[df["Component"] == "System total"]["Efficiency (%)"][3] == 0.0
+        df[df["Component"] == "System total"]["Efficiency (%)"][3] == 100.0
     ), "Case2 efficiency"
 
 
@@ -190,3 +190,33 @@ def test_case12():
     assert (
         df[df["Component"] == "System total"]["Warnings"][2] == "Yes"
     ), "Case 12 warnings"
+
+
+def test_case13():
+    """Multi-source"""
+    case13 = System("Case13 system", Source("3.3V", vo=3.3))
+    case13.add_source(Source("12V", vo=12, limits={"ii": [0, 1e-3]}))
+    case13.add_comp("3.3V", comp=PLoad("MCU", pwr=0.2))
+    case13.add_comp("12V", comp=PLoad("Test", pwr=1.5))
+    with pytest.raises(ValueError):
+        case13.add_source(PLoad("Test2", pwr=1.5))
+    case13.add_source(Source("3.3V aux", vo=3.3))
+    df = case13.solve()
+    assert len(df) == 9, "Case13 parameters row count"
+    assert (
+        df[df["Component"] == "System total"]["Warnings"][8] == "Yes"
+    ), "Case 13 total warnings"
+    assert (
+        df[df["Component"] == "Subsystem 12V"]["Warnings"][6] == "Yes"
+    ), "Case 13 Subsystem 12V warnings"
+    case13.save("tests/unit/case13.json")
+    # reload case13 from file
+    case13b = System.from_file("tests/unit/case13.json")
+    dff = case13b.solve()
+    assert len(dff) == 9, "Case13 parameters row count"
+    assert (
+        dff[dff["Component"] == "System total"]["Warnings"][8] == "Yes"
+    ), "Case 13 total warnings"
+    assert (
+        dff[dff["Component"] == "Subsystem 12V"]["Warnings"][6] == "Yes"
+    ), "Case 13 Subsystem 12V warnings"
