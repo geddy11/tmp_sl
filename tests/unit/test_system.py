@@ -152,6 +152,8 @@ def test_case10():
     case10.change_comp("Buck", comp=LinReg("LDO", vo=3.3))
     with pytest.raises(ValueError):
         case10.change_comp("LDO", comp=Source("5V", vo=5.0))
+    with pytest.raises(ValueError):
+        case10.change_comp("24V system", comp=LinReg("LDO2", vo=3.3))
 
 
 def test_case11():
@@ -210,6 +212,16 @@ def test_case13():
         df[df["Component"] == "Subsystem 12V"]["Warnings"][6] == "Yes"
     ), "Case 13 Subsystem 12V warnings"
     case13.save("tests/unit/case13.json")
+    with pytest.raises(ValueError):
+        case13.del_comp("12V", del_childs=False)
+    case13.del_comp("12V")
+    df = case13.solve()
+    assert len(df) == 6, "Case13 parameters row count after delete 12V"
+    case13.del_comp("3.3V aux")
+    df = case13.solve()
+    assert len(df) == 3, "Case13 parameters row count after delete 3.3V aux"
+    with pytest.raises(ValueError):
+        case13.del_comp("3.3V")
     # reload case13 from file
     case13b = System.from_file("tests/unit/case13.json")
     dff = case13b.solve()
@@ -220,3 +232,6 @@ def test_case13():
     assert (
         dff[dff["Component"] == "Subsystem 12V"]["Warnings"][6] == "Yes"
     ), "Case 13 Subsystem 12V warnings"
+    assert (
+        dff[dff["Component"] == "Subsystem 3.3V"]["Warnings"][5] == ""
+    ), "Case 13 Subsystem 3.3V warnings"

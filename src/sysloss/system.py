@@ -119,21 +119,21 @@ class System:
 
         return self
 
-    def __get_index(self, name: str):
+    def _get_index(self, name: str):
         """Get node index from component name"""
         if name in self._g.attrs["nodes"]:
             return self._g.attrs["nodes"][name]
 
         return -1
 
-    def __chk_parent(self, parent: str):
+    def _chk_parent(self, parent: str):
         """Check if parent exists"""
         if not parent in self._g.attrs["nodes"].keys():
             raise ValueError('Error: Parent name "{}" not found!'.format(parent))
 
         return True
 
-    def __chk_name(self, name: str):
+    def _chk_name(self, name: str):
         """Check if component name is valid"""
         # check if name exists
         if name in self._g.attrs["nodes"].keys():
@@ -141,7 +141,7 @@ class System:
 
         return True
 
-    def __get_childs_tree(self, node):
+    def _get_childs_tree(self, node):
         """Get dict of parent/childs"""
         childs = list(rx.bfs_successors(self._g, node))
         cdict = {}
@@ -152,13 +152,13 @@ class System:
             cdict[self._g.attrs["nodes"][c[0].params["name"]]] = cs
         return cdict
 
-    def __get_nodes(self):
+    def _get_nodes(self):
         """Get list of nodes in system"""
         return [n for n in self._g.node_indices()]
 
-    def __get_childs(self):
+    def _get_childs(self):
         """Get list of children of each node"""
-        nodes = self.__get_nodes()
+        nodes = self._get_nodes()
         cs = list(-np.ones(max(nodes) + 1, dtype=np.int32))
         for n in nodes:
             if self._g.out_degree(n) > 0:
@@ -166,9 +166,9 @@ class System:
                 cs[n] = ind
         return cs
 
-    def __get_parents(self):
+    def _get_parents(self):
         """Get list of parent of each node"""
-        nodes = self.__get_nodes()
+        nodes = self._get_nodes()
         ps = list(-np.ones(max(nodes) + 1, dtype=np.int32))
         for n in nodes:
             if self._g.in_degree(n) > 0:
@@ -176,38 +176,38 @@ class System:
                 ps[n] = ind
         return ps
 
-    def __get_sources(self):
+    def _get_sources(self):
         """Get list of sources"""
         tn = [n for n in rx.topological_sort(self._g)]
         return [n for n in tn if isinstance(self._g[n], Source)]
 
-    def __get_topo_sort(self):
+    def _get_topo_sort(self):
         """Get nodes topological sorted"""
         tps = rx.topological_sort(self._g)
         return [n for n in tps]
 
-    def __sys_vars(self):
+    def _sys_vars(self):
         """Get system variable lists"""
-        vn = max(self.__get_nodes()) + 1  # highest node index + 1
+        vn = max(self._get_nodes()) + 1  # highest node index + 1
         v = list(np.zeros(vn))  # voltages
         i = list(np.zeros(vn))  # currents
         return v, i
 
-    def __make_rtree(self, adj, node):
+    def _make_rtree(self, adj, node):
         """Create Rich tree"""
         tree = Tree(node)
         for child in adj.get(node, []):
-            tree.add(self.__make_rtree(adj, child))
+            tree.add(self._make_rtree(adj, child))
         return tree
 
     def add_comp(self, parent: str, *, comp):
         """Add component to system"""
         # check that parent exists
-        self.__chk_parent(parent)
+        self._chk_parent(parent)
         # check that component name is unique
-        self.__chk_name(comp.params["name"])
+        self._chk_name(comp.params["name"])
         # check that parent allows component type as child
-        pidx = self.__get_index(parent)
+        pidx = self._get_index(parent)
         if not comp.component_type in self._g[pidx].child_types:
             raise ValueError(
                 "Error: Parent does not allow child of type {}!".format(
@@ -219,7 +219,7 @@ class System:
 
     def add_source(self, source):
         """Add new source"""
-        self.__chk_name(source.params["name"])
+        self._chk_name(source.params["name"])
         if not isinstance(source, Source):
             raise ValueError("Error: Component must be a source!")
 
@@ -230,11 +230,16 @@ class System:
         """Replace component with a new one"""
         # if component name changes, check that it is unique
         if name != comp.params["name"]:
-            self.__chk_name(comp.params["name"])
+            self._chk_name(comp.params["name"])
+
+        # source can only be changed to source
+        eidx = self._get_index(name)
+        if self._g[eidx].component_type == ComponentTypes.SOURCE:
+            if not isinstance(comp, Source):
+                raise ValueError("Error: Source cannot be changed to other type!")
 
         # check that parent allows component type as child
-        eidx = self.__get_index(name)
-        parents = self.__get_parents()
+        parents = self._get_parents()
         if parents[eidx] != -1:
             if not comp.component_type in self._g[parents[eidx][0]].child_types:
                 raise ValueError(
@@ -248,13 +253,16 @@ class System:
         self._g.attrs["nodes"][comp.params["name"]] = eidx
 
     def del_comp(self, name: str, *, del_childs: bool = True):
-        eidx = self.__get_index(name)
+        eidx = self._get_index(name)
         if eidx == -1:
             raise ValueError("Error: Component name does not exist!")
-        parents = self.__get_parents()
-        if parents[eidx] == -1:
-            raise ValueError("Error: Cannot delete source node!")
-        childs = self.__get_childs()
+        parents = self._get_parents()
+        if parents[eidx] == -1:  # source node
+            if not del_childs:
+                raise ValueError("Error: Source must be deleted with its childs")
+            if len(self._get_sources()) < 2:
+                raise ValueError("Error: Cannot delete the last source node!")
+        childs = self._get_childs()
         # if not leaf, check if child type is allowed by parent type (not possible?)
         # if leaves[eidx] == 0:
         #     for c in childs[eidx]:
@@ -265,7 +273,6 @@ class System:
         # delete childs first if selected
         if del_childs:
             for c in rx.descendants(self._g, eidx):
-                print(c, eidx)
                 del [self._g.attrs["nodes"][self._g[c].params["name"]]]
                 self._g.remove_node(c)
         # delete node
@@ -284,7 +291,7 @@ class System:
                 raise ValueError("Error: Component name is not valid!")
             root = [name]
         else:
-            ridx = self.__get_sources()
+            ridx = self._get_sources()
             root = [self._g[n].params["name"] for n in ridx]
 
         t = Tree(self._g.attrs["name"])
@@ -296,20 +303,20 @@ class System:
                 for j in i[1]:
                     c += [j.params["name"]]
                 ndict[i[0].params["name"]] = c
-            t.add(self.__make_rtree(ndict, n))
+            t.add(self._make_rtree(ndict, n))
         return t
 
-    def __sys_init(self):
+    def _sys_init(self):
         """Create vectors of init values for solver"""
-        v, i = self.__sys_vars()
-        for n in self.__get_nodes():
+        v, i = self._sys_vars()
+        for n in self._get_nodes():
             v[n] = self._g[n]._get_outp_voltage()
             i[n] = self._g[n]._get_inp_current()
         return v, i
 
-    def __fwd_prop(self, v: float, i: float):
+    def _fwd_prop(self, v: float, i: float):
         """Forward propagation of voltages"""
-        vo, _ = self.__sys_vars()
+        vo, _ = self._sys_vars()
         # update output voltages (per node)
         for n in self._topo_nodes:
             p = self._parents[n]
@@ -329,9 +336,9 @@ class System:
                     vo[n] = self._g[n]._solv_outp_volt(v[p[0]], i[n], isum)
         return vo
 
-    def __back_prop(self, v: float, i: float):
+    def _back_prop(self, v: float, i: float):
         """Backward propagation of currents"""
-        _, ii = self.__sys_vars()
+        _, ii = self._sys_vars()
         # update input currents (per node)
         for n in self._topo_nodes[::-1]:
             p = self._parents[n]
@@ -351,29 +358,26 @@ class System:
 
         return ii
 
-    def __rel_update(self):
+    def _rel_update(self):
         """Update lists with component relationships"""
-        self._parents = self.__get_parents()
-        self._childs = self.__get_childs()
-        self._topo_nodes = self.__get_topo_sort()
+        self._parents = self._get_parents()
+        self._childs = self._get_childs()
+        self._topo_nodes = self._get_topo_sort()
 
-    def __get_parent_name(self, node):
+    def _get_parent_name(self, node):
         """Get parent name of node"""
         if self._parents[node] == -1:
             return ""
-
         return self._g[self._parents[node][0]].params["name"]
 
-    def solve(self, *, vtol=1e-5, itol=1e-6, maxiter=1000, quiet=True):
-        """Analyze system"""
-        self.__rel_update()
-        # initial condition
-        v, i = self.__sys_init()
-        # solve system function
-        iters = 1
+    def _solve(self, vtol=1e-5, itol=1e-6, maxiter=1000, quiet=True):
+        """Solver"""
+        v, i = self._sys_init()
+        iters = 0
         while iters <= maxiter:
-            vi = self.__fwd_prop(v, i)
-            ii = self.__back_prop(vi, i)
+            vi = self._fwd_prop(v, i)
+            ii = self._back_prop(vi, i)
+            iters += 1
             if np.allclose(np.array(v), np.array(vi), rtol=vtol) and np.allclose(
                 np.array(i), np.array(ii), rtol=itol
             ):
@@ -381,8 +385,13 @@ class System:
                     print("Tolerances met after {} iterations".format(iters))
                 break
             v, i = vi, ii
-            iters += 1
+        return v, i, iters
 
+    def solve(self, *, vtol=1e-5, itol=1e-6, maxiter=1000, quiet=True):
+        """Analyze system"""
+        self._rel_update()
+        # solve
+        v, i, iters = self._solve(vtol, itol, maxiter, quiet)
         if iters > maxiter:
             print("Analysis aborted after {} iterations".format(iters - 1))
             return None
@@ -413,7 +422,7 @@ class System:
                 for c in self._childs[n]:
                     io += i[c]
                 vi = v[p[0]]
-            parent += [self.__get_parent_name(n)]
+            parent += [self._get_parent_name(n)]
             p, l, e = self._g[n]._solv_pwr_loss(vi, vo, ii, io)
             pwr += [p]
             loss += [l]
@@ -508,7 +517,7 @@ class System:
 
     def params(self, limits=False):
         """Return component parameters"""
-        self.__rel_update()
+        self._rel_update()
         names, typ, parent, vo, vdrop = [], [], [], [], []
         iq, rs, eff, ii, pwr = [], [], [], [], []
         lii, lio, lvi, lvo = [], [], [], []
@@ -548,7 +557,7 @@ class System:
             eff += [_eff]
             ii += [_ii]
             pwr += [_pwr]
-            parent += [self.__get_parent_name(n)]
+            parent += [self._get_parent_name(n)]
             if limits:
                 lii += [_get_opt(self._g[n].limits, "ii", LIMITS_DEFAULT["ii"])]
                 lio += [_get_opt(self._g[n].limits, "io", LIMITS_DEFAULT["io"])]
@@ -576,12 +585,12 @@ class System:
 
     def save(self, fname, *, indent=4):
         """Save system as json file"""
-        self.__rel_update()
+        self._rel_update()
         sys = {"name": self._g.attrs["name"], "version": "0.10.0"}  # TODO: version
-        ridx = self.__get_sources()
+        ridx = self._get_sources()
         root = [self._g[n].params["name"] for n in ridx]
         for r in range(len(ridx)):
-            tree = self.__get_childs_tree(ridx[r])
+            tree = self._get_childs_tree(ridx[r])
             cdict = {}
             if tree != {}:
                 for e in tree:
