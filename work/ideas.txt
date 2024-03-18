@@ -8,10 +8,12 @@
 -rules:
  elementer
 
-Load table:
+Load phases:
 -Global sett last-caser
--Definerer faser og dutycycle
+-Definerer faser og duration
 -Loads kan bruke disse fasene (eller bare ha default)
+-converter/linreg gir ut 0.0 i sleep(shutdown)
+-set_active_phases() (hvis ikke satt, alltid på)
 
 Battery life: 
 -kall ekstern funksjon f(tabs, tstep, curr) = (volt, remain capacity, rs)

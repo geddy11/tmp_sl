@@ -41,7 +41,7 @@ def test_case1():
     df = case1.solve(maxiter=1)
     assert df == None, "Case1 aborted on maxiter"
     df = case1.solve(quiet=False)
-    assert len(df) == 10, "Case1 result row count"
+    assert len(df) == 10, "Case1 solution row count"
     assert np.allclose(
         df[df["Component"] == "System total"]["Efficiency (%)"][9],
         79.3625,
@@ -61,7 +61,7 @@ def test_case1():
     # reload system from json
     case1b = System.from_file("tests/unit/case1.json")
     df2 = case1b.solve()
-    assert len(df2) == 10, "Case1b result row count"
+    assert len(df2) == 10, "Case1b solution row count"
 
     assert np.allclose(
         df2[df2["Component"] == "System total"]["Efficiency (%)"][9],
@@ -80,7 +80,7 @@ def test_case2():
     """Check system consisting of only Source"""
     case2 = System("Case2 system", Source("12V input", vo=12.0))
     df = case2.solve()
-    assert len(df) == 2, "Case2 result row count"
+    assert len(df) == 2, "Case2 solution row count"
     assert (
         df[df["Component"] == "System total"]["Efficiency (%)"][1] == 100.0
     ), "Case2 efficiency"
@@ -95,7 +95,7 @@ def test_case3():
     )
     case3.add_comp("-12V inverter", comp=Loss("Resistor", rs=25.0))
     df = case3.solve()
-    assert len(df) == 4, "Case3 result row count"
+    assert len(df) == 4, "Case3 solution row count"
     assert (
         df[df["Component"] == "System total"]["Efficiency (%)"][3] == 100.0
     ), "Case2 efficiency"
@@ -106,7 +106,7 @@ def test_case4():
     case4 = System("Case4 system", Source("0V system", vo=0.0))
     case4.add_comp("0V system", comp=Converter("Buck", vo=3.3, eff=0.50))
     df = case4.solve()
-    assert len(df) == 3, "Case4 result row count"
+    assert len(df) == 3, "Case4 solution row count"
 
 
 def test_case5():
@@ -114,7 +114,7 @@ def test_case5():
     case5 = System("Case4 system", Source("0V system", vo=0.0))
     case5.add_comp("0V system", comp=LinReg("LDO", vo=-3.3))
     df = case5.solve()
-    assert len(df) == 3, "Case5 result row count"
+    assert len(df) == 3, "Case5 solution row count"
 
 
 def test_case6():
@@ -204,7 +204,7 @@ def test_case13():
         case13.add_source(PLoad("Test2", pwr=1.5))
     case13.add_source(Source("3.3V aux", vo=3.3))
     df = case13.solve()
-    assert len(df) == 9, "Case13 parameters row count"
+    assert len(df) == 9, "Case13 solution row count"
     assert (
         df[df["Component"] == "System total"]["Warnings"][8] == "Yes"
     ), "Case 13 total warnings"
@@ -216,16 +216,16 @@ def test_case13():
         case13.del_comp("12V", del_childs=False)
     case13.del_comp("12V")
     df = case13.solve()
-    assert len(df) == 6, "Case13 parameters row count after delete 12V"
+    assert len(df) == 6, "Case13 solution row count after delete 12V"
     case13.del_comp("3.3V aux")
     df = case13.solve()
-    assert len(df) == 3, "Case13 parameters row count after delete 3.3V aux"
+    assert len(df) == 3, "Case13 solution row count after delete 3.3V aux"
     with pytest.raises(ValueError):
         case13.del_comp("3.3V")
     # reload case13 from file
     case13b = System.from_file("tests/unit/case13.json")
     dff = case13b.solve()
-    assert len(dff) == 9, "Case13 parameters row count"
+    assert len(dff) == 9, "Case13 solution row count"
     assert (
         dff[dff["Component"] == "System total"]["Warnings"][8] == "Yes"
     ), "Case 13 total warnings"
@@ -235,3 +235,23 @@ def test_case13():
     assert (
         dff[dff["Component"] == "Subsystem 3.3V"]["Warnings"][5] == ""
     ), "Case 13 Subsystem 3.3V warnings"
+
+
+def test_case14():
+    """Zero output source"""
+    case14 = System("Case14 system", Source("0V", vo=0.0))
+    case14.add_comp("0V", comp=PLoad("MCU", pwr=0.2))
+    case14.add_comp("0V", comp=ILoad("Test", ii=0.1))
+    df = case14.solve()
+    assert len(df) == 4, "Case14 solution row count"
+
+
+def test_case15():
+    """Load phases"""
+    case15 = System("Case15 system", Source("5V", vo=5.0))
+    case15.add_comp("5V", comp=PLoad("MCU", pwr=0.2))
+    with pytest.raises(ValueError):
+        case15.set_phases({"sleep": 1000})
+    phases = {"sleep": 3600, "active": 127}
+    case15.set_phases(phases)
+    assert phases == case15.get_phases()

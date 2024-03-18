@@ -39,8 +39,10 @@ class ComponentTypes(Enum):
 
 MAX_DEFAULT = 1.0e6
 IQ_DEFAULT = 0.0
+IIS_DEFAULT = 0.0
 RS_DEFAULT = 0.0
 VDROP_DEFAULT = 0.0
+PWRS_DEFAULT = 0.0
 LIMITS_DEFAULT = {
     "vi": [0.0, MAX_DEFAULT],
     "vo": [0.0, MAX_DEFAULT],
@@ -133,7 +135,7 @@ class Source:
         *,
         vo: float,
         rs: float = RS_DEFAULT,
-        limits: dict = LIMITS_DEFAULT
+        limits: dict = LIMITS_DEFAULT,
     ):
         """Set source name, voltage, internal resistance and max current"""
         self.params = {}
@@ -197,11 +199,19 @@ class PLoad:
         """The Load component cannot have childs"""
         return [None]
 
-    def __init__(self, name: str, *, pwr: float, limits: dict = LIMITS_DEFAULT):
+    def __init__(
+        self,
+        name: str,
+        *,
+        pwr: float,
+        limits: dict = LIMITS_DEFAULT,
+        pwrs: float = PWRS_DEFAULT,
+    ):
         """Set load power"""
         self.params = {}
         self.params["name"] = name
         self.params["pwr"] = abs(pwr)
+        self.params["pwrs"] = abs(pwrs)
         self.limits = limits
 
     @classmethod
@@ -212,7 +222,8 @@ class PLoad:
 
         p = _get_mand(config["pload"], "pwr")
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
-        return cls(name, pwr=p, limits=lim)
+        pwrs = _get_opt(config["pload"], "pwrs", PWRS_DEFAULT)
+        return cls(name, pwr=p, limits=lim, pwrs=pwrs)
 
     def _get_inp_current(self):
         return 0.0
@@ -248,11 +259,19 @@ class ILoad(PLoad):
         type of component
     """
 
-    def __init__(self, name: str, *, ii: float, limits: dict = LIMITS_DEFAULT):
+    def __init__(
+        self,
+        name: str,
+        *,
+        ii: float,
+        limits: dict = LIMITS_DEFAULT,
+        iis: float = IIS_DEFAULT,
+    ):
         """Set load current"""
         self.params = {}
         self.params["name"] = name
         self.params["ii"] = abs(ii)
+        self.params["iis"] = abs(iis)
         self.limits = limits
 
     @classmethod
@@ -263,13 +282,16 @@ class ILoad(PLoad):
 
         i = _get_mand(config["iload"], "ii")
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
-        return cls(name, ii=i, limits=lim)
+        iis = _get_opt(config["iload"], "iis", IIS_DEFAULT)
+        return cls(name, ii=i, limits=lim, iis=iis)
 
     def _get_inp_current(self):
         return self.params["ii"]
 
     def _solv_inp_curr(self, vi, vo, io):
-        return self.params["ii"]
+        if vi != 0.0:
+            return self.params["ii"]
+        return 0.0
 
 
 class RLoad(PLoad):
@@ -332,7 +354,7 @@ class Loss:
         *,
         rs: float = RS_DEFAULT,
         vdrop: float = VDROP_DEFAULT,
-        limits: dict = LIMITS_DEFAULT
+        limits: dict = LIMITS_DEFAULT,
     ):
         """Set series resistance and/or vdrop"""
         self.params = {}
@@ -408,7 +430,8 @@ class Converter:
         vo: float,
         eff: float,
         iq: float = IQ_DEFAULT,
-        limits: dict = LIMITS_DEFAULT
+        limits: dict = LIMITS_DEFAULT,
+        iis: float = IIS_DEFAULT,
     ):
         """Set converter parameters"""
         self.params = {}
@@ -420,6 +443,7 @@ class Converter:
             raise ValueError("Efficiency must be < 1.0")
         self.params["eff"] = eff
         self.params["iq"] = abs(iq)
+        self.params["iis"] = abs(iis)
         self.limits = limits
 
     @classmethod
@@ -432,7 +456,8 @@ class Converter:
         e = _get_mand(config["converter"], "eff")
         iq = _get_opt(config["converter"], "iq", IQ_DEFAULT)
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
-        return cls(name, vo=v, eff=e, iq=iq, limits=lim)
+        iis = _get_opt(config["converter"], "iis", IIS_DEFAULT)
+        return cls(name, vo=v, eff=e, iq=iq, limits=lim, iis=iis)
 
     def _get_inp_current(self):
         return self.params["iq"]
@@ -493,7 +518,8 @@ class LinReg:
         vo: float,
         vdrop: float = VDROP_DEFAULT,
         iq: float = IQ_DEFAULT,
-        limits: dict = LIMITS_DEFAULT
+        limits: dict = LIMITS_DEFAULT,
+        iis: float = IIS_DEFAULT,
     ):
         """Set linear regulator parameters"""
         self.params = {}
@@ -503,6 +529,7 @@ class LinReg:
             raise ValueError("Voltage drop must be < vo")
         self.params["vdrop"] = abs(vdrop)
         self.params["iq"] = abs(iq)
+        self.params["iis"] = abs(iis)
         self.limits = limits
 
     @classmethod
@@ -515,7 +542,8 @@ class LinReg:
         vd = _get_opt(config["linreg"], "vdrop", VDROP_DEFAULT)
         iq = _get_opt(config["linreg"], "iq", IQ_DEFAULT)
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
-        return cls(name, vo=v, vdrop=vd, iq=iq, limits=lim)
+        iis = _get_opt(config["linreg"], "iis", IIS_DEFAULT)
+        return cls(name, vo=v, vdrop=vd, iq=iq, limits=lim, iis=iis)
 
     def _get_inp_current(self):
         return self.params["iq"]

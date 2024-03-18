@@ -47,6 +47,7 @@ class System:
         self._g = rx.PyDAG(check_cycle=True, multigraph=False, attrs={})
         pidx = self._g.add_node(source)
         self._g.attrs["name"] = name
+        self._g.attrs["phases"] = {}
         self._g.attrs["nodes"] = {}
         self._g.attrs["nodes"][source.params["name"]] = pidx
 
@@ -57,14 +58,15 @@ class System:
             sys = json.load(f)
 
         entires = list(sys.keys())
-        sysname = _get_mand(sys, "name")
-        ver = _get_mand(sys, "version")
+        sysparams = _get_mand(sys, "system")
+        sysname = _get_mand(sysparams, "name")
+        ver = _get_mand(sysparams, "version")
         # add sources
-        for e in range(2, len(entires)):
+        for e in range(1, len(entires)):
             vo = _get_mand(sys[entires[e]]["params"], "vo")
             rs = _get_opt(sys[entires[e]]["params"], "rs", RS_DEFAULT)
             lim = _get_opt(sys[entires[e]], "limits", LIMITS_DEFAULT)
-            if e == 2:
+            if e == 1:
                 self = cls(sysname, Source(entires[e], vo=vo, rs=rs, limits=lim))
             else:
                 self.add_source(Source(entires[e], vo=vo, rs=rs, limits=lim))
@@ -116,7 +118,8 @@ class System:
                                 self.add_comp(
                                     p, comp=ILoad(cname, ii=ii, limits=limits)
                                 )
-
+        phases = _get_opt(sysparams, "phases", {})
+        self._g.attrs["phases"] = {}
         return self
 
     def _get_index(self, name: str):
@@ -141,7 +144,7 @@ class System:
 
         return True
 
-    def _get_childs_tree(self, node):
+    def _get_childs_tree(self, node: int):
         """Get dict of parent/childs"""
         childs = list(rx.bfs_successors(self._g, node))
         cdict = {}
@@ -519,8 +522,8 @@ class System:
         """Return component parameters"""
         self._rel_update()
         names, typ, parent, vo, vdrop = [], [], [], [], []
-        iq, rs, eff, ii, pwr = [], [], [], [], []
-        lii, lio, lvi, lvo = [], [], [], []
+        iq, rs, eff, ii, pwr, iis = [], [], [], [], [], []
+        lii, lio, lvi, lvo, pwrs = [], [], [], [], []
         domain, dname = [], "none"
         for n in self._topo_nodes:
             names += [self._g[n].params["name"]]
@@ -529,24 +532,29 @@ class System:
                 dname = self._g[n].params["name"]
             domain += [dname]
             _vo, _vdrop, _iq, _rs, _eff, _ii, _pwr = "", "", "", "", "", "", ""
+            _iis, _pwrs = "", ""
             if self._g[n].component_type == ComponentTypes.SOURCE:
                 _vo = self._g[n].params["vo"]
                 _rs = self._g[n].params["rs"]
             elif self._g[n].component_type == ComponentTypes.LOAD:
                 if "pwr" in self._g[n].params:
                     _pwr = self._g[n].params["pwr"]
+                    _pwrs = self._g[n].params["pwrs"]
                 elif "rs" in self._g[n].params:
                     _rs = self._g[n].params["rs"]
                 else:
                     _ii = self._g[n].params["ii"]
+                    _iis = self._g[n].params["iis"]
             elif self._g[n].component_type == ComponentTypes.CONVERTER:
                 _vo = self._g[n].params["vo"]
                 _iq = self._g[n].params["iq"]
                 _eff = self._g[n].params["eff"]
+                _iis = self._g[n].params["iis"]
             elif self._g[n].component_type == ComponentTypes.LINREG:
                 _vo = self._g[n].params["vo"]
                 _vdrop = self._g[n].params["vdrop"]
                 _iq = self._g[n].params["iq"]
+                _iis = self._g[n].params["iis"]
             elif self._g[n].component_type == ComponentTypes.LOSS:
                 _vdrop = self._g[n].params["vdrop"]
                 _rs = self._g[n].params["rs"]
@@ -557,6 +565,8 @@ class System:
             eff += [_eff]
             ii += [_ii]
             pwr += [_pwr]
+            iis += [_iis]
+            pwrs += [_pwrs]
             parent += [self._get_parent_name(n)]
             if limits:
                 lii += [_get_opt(self._g[n].limits, "ii", LIMITS_DEFAULT["ii"])]
@@ -571,11 +581,13 @@ class System:
         res["Domain"] = domain
         res["vo (V)"] = vo
         res["vdrop (V)"] = vdrop
-        res["iq (A)"] = iq
         res["rs (Ohm)"] = rs
         res["eff (%)"] = eff
+        res["iq (A)"] = iq
         res["ii (A)"] = ii
+        res["iis (A)"] = iis
         res["pwr (W)"] = pwr
+        res["pwrs (W)"] = pwrs
         if limits:
             res["vi limits (V)"] = lvi
             res["vo limits (V)"] = lvo
@@ -583,10 +595,26 @@ class System:
             res["io limits (A)"] = lio
         return pd.DataFrame(res)
 
+    def set_phases(self, phases: dict):
+        """Set load phases"""
+        if len(list(phases.keys())) < 2:
+            raise ValueError("Error: There must be at least two phases!")
+        self._g.attrs["phases"] = phases
+
+    def get_phases(self):
+        """Get load phases"""
+        return self._g.attrs["phases"]
+
     def save(self, fname, *, indent=4):
         """Save system as json file"""
         self._rel_update()
-        sys = {"name": self._g.attrs["name"], "version": "0.10.0"}  # TODO: version
+        sys = {
+            "system": {
+                "name": self._g.attrs["name"],
+                "version": "0.10.0",
+                "phases": self._g.attrs["phases"],
+            }
+        }  # TODO: version
         ridx = self._get_sources()
         root = [self._g[n].params["name"] for n in ridx]
         for r in range(len(ridx)):
