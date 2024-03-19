@@ -313,8 +313,8 @@ class System:
         """Create vectors of init values for solver"""
         v, i = self._sys_vars()
         for n in self._get_nodes():
-            v[n] = self._g[n]._get_outp_voltage()
-            i[n] = self._g[n]._get_inp_current()
+            v[n] = self._g[n]._get_outp_voltage("")
+            i[n] = self._g[n]._get_inp_current("")
         return v, i
 
     def _fwd_prop(self, v: float, i: float):
@@ -325,18 +325,18 @@ class System:
             p = self._parents[n]
             if self._childs[n] == -1:  # leaf
                 if p == -1:  # root
-                    vo[n] = self._g[n]._solv_outp_volt(0.0, 0.0, 0.0)
+                    vo[n] = self._g[n]._solv_outp_volt(0.0, 0.0, 0.0, "")
                 else:
-                    vo[n] = self._g[n]._solv_outp_volt(v[p[0]], i[n], 0.0)
+                    vo[n] = self._g[n]._solv_outp_volt(v[p[0]], i[n], 0.0, "")
             else:
                 # add currents into childs
                 isum = 0
                 for c in self._childs[n]:
                     isum += i[c]
                 if p == -1:  # root
-                    vo[n] = self._g[n]._solv_outp_volt(0.0, 0.0, isum)
+                    vo[n] = self._g[n]._solv_outp_volt(0.0, 0.0, isum, "")
                 else:
-                    vo[n] = self._g[n]._solv_outp_volt(v[p[0]], i[n], isum)
+                    vo[n] = self._g[n]._solv_outp_volt(v[p[0]], i[n], isum, "")
         return vo
 
     def _back_prop(self, v: float, i: float):
@@ -347,17 +347,17 @@ class System:
             p = self._parents[n]
             if self._childs[n] == -1:  # leaf
                 if p == -1:  # root
-                    ii[n] = self._g[n]._solv_inp_curr(v[n], 0.0, 0.0)
+                    ii[n] = self._g[n]._solv_inp_curr(v[n], 0.0, 0.0, "")
                 else:
-                    ii[n] = self._g[n]._solv_inp_curr(v[p[0]], 0.0, 0.0)
+                    ii[n] = self._g[n]._solv_inp_curr(v[p[0]], 0.0, 0.0, "")
             else:
                 isum = 0.0
                 for c in self._childs[n]:
                     isum += i[c]
                 if p == -1:  # root
-                    ii[n] = self._g[n]._solv_inp_curr(v[n], v[n], isum)
+                    ii[n] = self._g[n]._solv_inp_curr(v[n], v[n], isum, "")
                 else:
-                    ii[n] = self._g[n]._solv_inp_curr(v[p[0]], v[n], isum)
+                    ii[n] = self._g[n]._solv_inp_curr(v[p[0]], v[n], isum, "")
 
         return ii
 
@@ -426,7 +426,7 @@ class System:
                     io += i[c]
                 vi = v[p[0]]
             parent += [self._get_parent_name(n)]
-            p, l, e = self._g[n]._solv_pwr_loss(vi, vo, ii, io)
+            p, l, e = self._g[n]._solv_pwr_loss(vi, vo, ii, io, "")
             pwr += [p]
             loss += [l]
             eff += [e]
@@ -434,7 +434,7 @@ class System:
             if self._g[n].component_type.name == "SOURCE":
                 sources[dname] = vi
                 dwarns[dname] = 0
-            w = self._g[n]._solv_get_warns(vi, vo, ii, io)
+            w = self._g[n]._solv_get_warns(vi, vo, ii, io, "")
             warn += [w]
             if w != "":
                 dwarns[dname] = 1
@@ -599,11 +599,98 @@ class System:
         """Set load phases"""
         if len(list(phases.keys())) < 2:
             raise ValueError("Error: There must be at least two phases!")
+        if "All" in list(phases.keys()):
+            raise ValueError('Error: "All" is a reserved name!')
         self._g.attrs["phases"] = phases
 
     def get_phases(self):
         """Get load phases"""
         return self._g.attrs["phases"]
+
+    def phases(self):
+        """List load phases"""
+        self._rel_update()
+        if self._g.attrs["phases"] == {}:
+            return None
+        names, typ, parent, phase = [], [], [], []
+        rs, ii, pwr = [], [], []
+        domain, dname = [], "none"
+        phase_names = list(self._g.attrs["phases"].keys())
+        for n in self._topo_nodes:
+            # name = [self._g[n].params["name"]]
+            tname = self._g[n].component_type.name
+            if tname == "SOURCE":
+                dname = self._g[n].params["name"]
+            # domain += [dname]
+            # parent = [self._get_parent_name(n)]
+            ph_names = []
+            if tname == "SOURCE" or tname == "LOSS":
+                ph_names += ["All"]
+            elif tname == "CONVERTER" or tname == "LINREG":
+                if len(self._g[n].params["active_phases"]) > 0:
+                    for p in phase_names:
+                        if p in self._g[n].params["active_phases"]:
+                            ph_names += [p]
+                if ph_names == []:
+                    ph_names += ["All"]
+            elif tname == "LOAD":
+                if len(list(self._g[n].params["phase_loads"].keys())) > 0:
+                    for p in phase_names:
+                        if p in list(self._g[n].params["phase_loads"].keys()):
+                            ph_names += [p]
+                if ph_names == []:
+                    ph_names += ["All"]
+
+            for p in ph_names:
+                names += [self._g[n].params["name"]]
+                typ += [tname]
+                domain += [dname]
+                parent += [self._get_parent_name(n)]
+                phase += [p]
+                if tname == "SOURCE" or tname == "LOSS":
+                    # phase += ["All"]
+                    rs += [""]
+                    ii += [""]
+                    pwr += [""]
+                    break
+                if tname == "CONVERTER" or tname == "LINREG":
+                    rs += [""]
+                    ii += [""]
+                    pwr += [""]
+                if tname == "LOAD":
+                    if "pwr" in self._g[n].params:
+                        rs += [""]
+                        ii += [""]
+                        if p == "All":
+                            pwr += [self._g[n].params["pwr"]]
+                        else:
+                            pwr += [self._g[n].params["phase_loads"][p]]
+                    elif "rs" in self._g[n].params:
+                        ii += [""]
+                        pwr += [""]
+                        if p == "All":
+                            rs += [self._g[n].params["rs"]]
+                        else:
+                            rs += [self._g[n].params["phase_loads"][p]]
+                    else:
+                        rs += [""]
+                        pwr += [""]
+                        if p == "All":
+                            ii += [self._g[n].params["ii"]]
+                        else:
+                            ii += [self._g[n].params["phase_loads"][p]]
+
+        # report
+        res = {}
+        res["Component"] = names
+        res["Type"] = typ
+        res["Parent"] = parent
+        res["Domain"] = domain
+        res["Active phase"] = phase
+        res["rs (Ohm)"] = rs
+        res["ii (A)"] = ii
+        res["pwr (W)"] = pwr
+        return pd.DataFrame(res)
 
     def save(self, fname, *, indent=4):
         """Save system as json file"""

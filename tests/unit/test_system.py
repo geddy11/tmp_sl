@@ -249,9 +249,30 @@ def test_case14():
 def test_case15():
     """Load phases"""
     case15 = System("Case15 system", Source("5V", vo=5.0))
-    case15.add_comp("5V", comp=PLoad("MCU", pwr=0.2))
+    case15.add_comp(
+        "5V", comp=Converter("Buck 3.3", vo=3.3, eff=0.88, active_phases=["active"])
+    )
+    case15.add_comp("5V", comp=LinReg("LDO 1.8", vo=1.5))
+    case15.add_comp(
+        "Buck 3.3",
+        comp=PLoad("MCU", pwr=0.2, phase_loads={"sleep": 1e-6, "active": 0.2}),
+    )
+    case15.add_comp("LDO 1.8", comp=ILoad("Sensor", ii=1.7e-3))
+    case15.add_comp(
+        "LDO 1.8", comp=ILoad("Sensor2", ii=2.7e-3, phase_loads={"sleep": 2.7e-3})
+    )
+    case15.add_comp("LDO 1.8", comp=PLoad("Sensor3", pwr=1.7e-3))
+    case15.add_comp("LDO 1.8", comp=RLoad("Sensor4", rs=25e3))
+    case15.add_comp(
+        "LDO 1.8", comp=RLoad("Sensor5", rs=100e3, phase_loads={"active": 45e3})
+    )
     with pytest.raises(ValueError):
         case15.set_phases({"sleep": 1000})
+    with pytest.raises(ValueError):
+        case15.set_phases({"All": 100, "rest": 1})
+    assert case15.phases() == None
     phases = {"sleep": 3600, "active": 127}
     case15.set_phases(phases)
     assert phases == case15.get_phases()
+    df = case15.phases()
+    assert len(df) == 10, "Case15 phase report length"

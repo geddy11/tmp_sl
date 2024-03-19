@@ -155,27 +155,27 @@ class Source:
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
         return cls(name, vo=v, rs=r, limits=lim)
 
-    def _get_inp_current(self):
+    def _get_inp_current(self, phase):
         return 0.0
 
-    def _get_outp_voltage(self):
+    def _get_outp_voltage(self, phase):
         return self.params["vo"]
 
-    def _solv_inp_curr(self, vi, vo, io):
+    def _solv_inp_curr(self, vi, vo, io, phase):
         """Calculate component input current from vi, vo and io"""
         return io
 
-    def _solv_outp_volt(self, vi, ii, io):
+    def _solv_outp_volt(self, vi, ii, io, phase):
         """Calculate component output voltage from vi, ii and io"""
         return self.params["vo"] - self.params["rs"] * io
 
-    def _solv_pwr_loss(self, vi, vo, ii, io):
+    def _solv_pwr_loss(self, vi, vo, ii, io, phase):
         """Calculate power and loss in component"""
         pwr = abs(vo * io)
         loss = self.params["rs"] * io * io
         return pwr, loss, _get_eff(pwr, loss)
 
-    def _solv_get_warns(self, vi, vo, ii, io):
+    def _solv_get_warns(self, vi, vo, ii, io, phase):
         """Check limits"""
         return _get_warns(self.limits, {"ii": ii, "io": io})
 
@@ -206,12 +206,14 @@ class PLoad:
         pwr: float,
         limits: dict = LIMITS_DEFAULT,
         pwrs: float = PWRS_DEFAULT,
+        phase_loads: dict = {},
     ):
         """Set load power"""
         self.params = {}
         self.params["name"] = name
         self.params["pwr"] = abs(pwr)
         self.params["pwrs"] = abs(pwrs)
+        self.params["phase_loads"] = phase_loads
         self.limits = limits
 
     @classmethod
@@ -223,29 +225,30 @@ class PLoad:
         p = _get_mand(config["pload"], "pwr")
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
         pwrs = _get_opt(config["pload"], "pwrs", PWRS_DEFAULT)
-        return cls(name, pwr=p, limits=lim, pwrs=pwrs)
+        pl = _get_opt(config["pload"], "phase_loads", {})
+        return cls(name, pwr=p, limits=lim, pwrs=pwrs, phase_loads=pl)
 
-    def _get_inp_current(self):
+    def _get_inp_current(self, phase):
         return 0.0
 
-    def _get_outp_voltage(self):
+    def _get_outp_voltage(self, phase):
         return 0.0
 
-    def _solv_inp_curr(self, vi, vo, io):
+    def _solv_inp_curr(self, vi, vo, io, phase):
         """Calculate component input current from vi, vo and io"""
         if vi != 0.0:
             return self.params["pwr"] / abs(vi)
         return 0.0
 
-    def _solv_outp_volt(self, vi, ii, io):
+    def _solv_outp_volt(self, vi, ii, io, phase):
         """Load output voltage is always 0"""
         return 0.0
 
-    def _solv_pwr_loss(self, vi, vo, ii, io):
+    def _solv_pwr_loss(self, vi, vo, ii, io, phase):
         """Calculate power and loss in component"""
         return abs(vi * ii), 0.0, 100.0
 
-    def _solv_get_warns(self, vi, vo, ii, io):
+    def _solv_get_warns(self, vi, vo, ii, io, phase):
         """Check limits"""
         return _get_warns(self.limits, {"vi": vi, "ii": ii})
 
@@ -266,13 +269,15 @@ class ILoad(PLoad):
         ii: float,
         limits: dict = LIMITS_DEFAULT,
         iis: float = IIS_DEFAULT,
+        phase_loads: dict = {},
     ):
         """Set load current"""
         self.params = {}
         self.params["name"] = name
         self.params["ii"] = abs(ii)
-        self.params["iis"] = abs(iis)
         self.limits = limits
+        self.params["iis"] = abs(iis)
+        self.params["phase_loads"] = phase_loads
 
     @classmethod
     def from_file(cls, name: str, *, fname: str = ""):
@@ -283,12 +288,13 @@ class ILoad(PLoad):
         i = _get_mand(config["iload"], "ii")
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
         iis = _get_opt(config["iload"], "iis", IIS_DEFAULT)
-        return cls(name, ii=i, limits=lim, iis=iis)
+        pl = _get_opt(config["iload"], "phase_loads", {})
+        return cls(name, ii=i, limits=lim, iis=iis, phase_loads=pl)
 
-    def _get_inp_current(self):
+    def _get_inp_current(self, phase):
         return self.params["ii"]
 
-    def _solv_inp_curr(self, vi, vo, io):
+    def _solv_inp_curr(self, vi, vo, io, phase):
         if vi != 0.0:
             return self.params["ii"]
         return 0.0
@@ -303,13 +309,21 @@ class RLoad(PLoad):
         type of component
     """
 
-    def __init__(self, name: str, *, rs: float, limits: dict = LIMITS_DEFAULT):
+    def __init__(
+        self,
+        name: str,
+        *,
+        rs: float,
+        limits: dict = LIMITS_DEFAULT,
+        phase_loads: dict = {},
+    ):
         """Set load current"""
         self.params = {}
         self.params["name"] = name
         if abs(rs) == 0.0:
             raise ValueError("Error: rs must be > 0!")
         self.params["rs"] = abs(rs)
+        self.params["phase_loads"] = phase_loads
         self.limits = limits
 
     @classmethod
@@ -320,9 +334,10 @@ class RLoad(PLoad):
 
         r = _get_mand(config["rload"], "rs")
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
-        return cls(name, rs=r, limits=lim)
+        pl = _get_opt(config["rload"], "phase_loads", {})
+        return cls(name, rs=r, limits=lim, phase_loads=pl)
 
-    def _solv_inp_curr(self, vi, vo, io):
+    def _solv_inp_curr(self, vi, vo, io, phase):
         return abs(vi) / self.params["rs"]
 
 
@@ -374,30 +389,30 @@ class Loss:
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
         return cls(name, rs=r, vdrop=vd, limits=lim)
 
-    def _get_inp_current(self):
+    def _get_inp_current(self, phase):
         return 0.0
 
-    def _get_outp_voltage(self):
+    def _get_outp_voltage(self, phase):
         return 0.0
 
-    def _solv_inp_curr(self, vi, vo, io):
+    def _solv_inp_curr(self, vi, vo, io, phase):
         """Calculate component input current from vi, vo and io"""
         return io  # TODO: iq?
 
-    def _solv_outp_volt(self, vi, ii, io):
+    def _solv_outp_volt(self, vi, ii, io, phase):
         """Calculate component output voltage from vi, ii and io"""
         if vi >= 0.0:
             return vi - self.params["rs"] * io - self.params["vdrop"]
         else:
             return vi + self.params["rs"] * io + self.params["vdrop"]
 
-    def _solv_pwr_loss(self, vi, vo, ii, io):
+    def _solv_pwr_loss(self, vi, vo, ii, io, phase):
         """Calculate power and loss in component"""
         loss = abs(self.params["rs"] * ii * ii + self.params["vdrop"] * ii)
         pwr = abs(vi * ii)
         return 0.0, loss, _get_eff(pwr, loss, 0.0)
 
-    def _solv_get_warns(self, vi, vo, ii, io):
+    def _solv_get_warns(self, vi, vo, ii, io, phase):
         """Check limits"""
         return _get_warns(self.limits, {"vi": vi, "vo": vo, "ii": ii, "io": io})
 
@@ -432,6 +447,7 @@ class Converter:
         iq: float = IQ_DEFAULT,
         limits: dict = LIMITS_DEFAULT,
         iis: float = IIS_DEFAULT,
+        active_phases: list = [],
     ):
         """Set converter parameters"""
         self.params = {}
@@ -444,6 +460,7 @@ class Converter:
         self.params["eff"] = eff
         self.params["iq"] = abs(iq)
         self.params["iis"] = abs(iis)
+        self.params["active_phases"] = active_phases
         self.limits = limits
 
     @classmethod
@@ -457,26 +474,27 @@ class Converter:
         iq = _get_opt(config["converter"], "iq", IQ_DEFAULT)
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
         iis = _get_opt(config["converter"], "iis", IIS_DEFAULT)
-        return cls(name, vo=v, eff=e, iq=iq, limits=lim, iis=iis)
+        ap = _get_opt(config["converter"], "active_phases", [])
+        return cls(name, vo=v, eff=e, iq=iq, limits=lim, iis=iis, active_phases=ap)
 
-    def _get_inp_current(self):
+    def _get_inp_current(self, phase):
         return self.params["iq"]
 
-    def _get_outp_voltage(self):
+    def _get_outp_voltage(self, phase):
         return self.params["vo"]
 
-    def _solv_inp_curr(self, vi, vo, io):
+    def _solv_inp_curr(self, vi, vo, io, phase):
         """Calculate component input current from vi, vo and io"""
         ve = self.params["eff"] * vi
         if ve > 0.0:
             return self.params["iq"] + abs(vo * io / ve)
         return 0.0
 
-    def _solv_outp_volt(self, vi, ii, io):
+    def _solv_outp_volt(self, vi, ii, io, phase):
         """Calculate component output voltage from vi, ii and io"""
         return self.params["vo"]
 
-    def _solv_pwr_loss(self, vi, vo, ii, io):
+    def _solv_pwr_loss(self, vi, vo, ii, io, phase):
         """Calculate power and loss in component"""
         loss = abs(
             self.params["iq"] * vi
@@ -485,7 +503,7 @@ class Converter:
         pwr = abs(vi * ii)
         return 0.0, loss, _get_eff(pwr, loss, 0.0)
 
-    def _solv_get_warns(self, vi, vo, ii, io):
+    def _solv_get_warns(self, vi, vo, ii, io, phase):
         """Check limits"""
         return _get_warns(self.limits, {"vi": vi, "vo": vo, "ii": ii, "io": io})
 
@@ -520,6 +538,7 @@ class LinReg:
         iq: float = IQ_DEFAULT,
         limits: dict = LIMITS_DEFAULT,
         iis: float = IIS_DEFAULT,
+        active_phases: list = [],
     ):
         """Set linear regulator parameters"""
         self.params = {}
@@ -530,6 +549,7 @@ class LinReg:
         self.params["vdrop"] = abs(vdrop)
         self.params["iq"] = abs(iq)
         self.params["iis"] = abs(iis)
+        self.params["active_phases"] = active_phases
         self.limits = limits
 
     @classmethod
@@ -543,31 +563,32 @@ class LinReg:
         iq = _get_opt(config["linreg"], "iq", IQ_DEFAULT)
         lim = _get_opt(config, "limits", LIMITS_DEFAULT)
         iis = _get_opt(config["linreg"], "iis", IIS_DEFAULT)
-        return cls(name, vo=v, vdrop=vd, iq=iq, limits=lim, iis=iis)
+        ap = _get_opt(config["linreg"], "active_phases", [])
+        return cls(name, vo=v, vdrop=vd, iq=iq, limits=lim, iis=iis, active_phases=ap)
 
-    def _get_inp_current(self):
+    def _get_inp_current(self, phase):
         return self.params["iq"]
 
-    def _get_outp_voltage(self):
+    def _get_outp_voltage(self, phase):
         return self.params["vo"]
 
-    def _solv_inp_curr(self, vi, vo, io):
+    def _solv_inp_curr(self, vi, vo, io, phase):
         """Calculate component input current from vi, vo and io"""
         return io + self.params["iq"]
 
-    def _solv_outp_volt(self, vi, ii, io):
+    def _solv_outp_volt(self, vi, ii, io, phase):
         """Calculate component output voltage from vi, ii and io"""
         v = min(abs(self.params["vo"]), max(abs(vi) - self.params["vdrop"], 0.0))
         if self.params["vo"] >= 0.0:
             return v
         return -v
 
-    def _solv_pwr_loss(self, vi, vo, ii, io):
+    def _solv_pwr_loss(self, vi, vo, ii, io, phase):
         """Calculate power and loss in component"""
         loss = (abs(vi) - abs(vo)) * io + abs(vi) * self.params["iq"]
         pwr = abs(vi * ii)
         return 0.0, loss, _get_eff(pwr, loss, 0.0)
 
-    def _solv_get_warns(self, vi, vo, ii, io):
+    def _solv_get_warns(self, vi, vo, ii, io, phase):
         """Check limits"""
         return _get_warns(self.limits, {"vi": vi, "vo": vo, "ii": ii, "io": io})
