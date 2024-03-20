@@ -276,3 +276,9 @@ def test_case15():
     assert phases == case15.get_phases()
     df = case15.phases()
     assert len(df) == 10, "Case15 phase report length"
+    with pytest.raises(ValueError):
+        case15.solve(phase="unknown")
+    df = case15.solve(phase="sleep")
+    assert len(df) == 10, "Case15 solution row count (one phase)"
+    df = case15.solve()
+    assert len(df) == 21, "Case15 solution row count (all phases)"

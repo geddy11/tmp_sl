@@ -317,7 +317,7 @@ class System:
             i[n] = self._g[n]._get_inp_current("")
         return v, i
 
-    def _fwd_prop(self, v: float, i: float):
+    def _fwd_prop(self, v: float, i: float, phase: str = ""):
         """Forward propagation of voltages"""
         vo, _ = self._sys_vars()
         # update output voltages (per node)
@@ -339,7 +339,7 @@ class System:
                     vo[n] = self._g[n]._solv_outp_volt(v[p[0]], i[n], isum, "")
         return vo
 
-    def _back_prop(self, v: float, i: float):
+    def _back_prop(self, v: float, i: float, phase: str = ""):
         """Backward propagation of currents"""
         _, ii = self._sys_vars()
         # update input currents (per node)
@@ -373,13 +373,13 @@ class System:
             return ""
         return self._g[self._parents[node][0]].params["name"]
 
-    def _solve(self, vtol=1e-5, itol=1e-6, maxiter=1000, quiet=True):
+    def _solve(self, vtol=1e-5, itol=1e-6, maxiter=1000, quiet=True, phase: str = ""):
         """Solver"""
         v, i = self._sys_init()
         iters = 0
         while iters <= maxiter:
-            vi = self._fwd_prop(v, i)
-            ii = self._back_prop(vi, i)
+            vi = self._fwd_prop(v, i, phase)
+            ii = self._back_prop(vi, i, phase)
             iters += 1
             if np.allclose(np.array(v), np.array(vi), rtol=vtol) and np.allclose(
                 np.array(i), np.array(ii), rtol=itol
@@ -390,133 +390,160 @@ class System:
             v, i = vi, ii
         return v, i, iters
 
-    def solve(self, *, vtol=1e-5, itol=1e-6, maxiter=1000, quiet=True):
+    def solve(self, *, vtol=1e-5, itol=1e-6, maxiter=1000, quiet=True, phase: str = ""):
         """Analyze system"""
         self._rel_update()
+        phase_list = [""]
+        if phase != "":
+            if phase not in list(self._g.attrs["phases"].keys()):
+                raise ValueError(
+                    "Error: The specified phase '{}' is not defined".format(phase)
+                )
+            phase_list = [phase]
+        elif len(list(self._g.attrs["phases"].keys())) > 0:
+            phase_list = list(self._g.attrs["phases"].keys())
         # solve
-        v, i, iters = self._solve(vtol, itol, maxiter, quiet)
-        if iters > maxiter:
-            print("Analysis aborted after {} iterations".format(iters - 1))
-            return None
+        frames = []
+        for ph in phase_list:
+            v, i, iters = self._solve(vtol, itol, maxiter, quiet, ph)
+            if iters > maxiter:
+                print("Analysis aborted after {} iterations".format(iters - 1))
+                return None
 
-        # calculate results for each node
-        names, parent, typ, pwr, loss = [], [], [], [], []
-        eff, warn, vsi, iso, vso, isi = [], [], [], [], [], []
-        domain, dname = [], "none"
-        sources, dwarns = {}, {}
-        for n in self._topo_nodes:  # [vi, vo, ii, io]
-            names += [self._g[n].params["name"]]
-            if self._g[n].component_type.name == "SOURCE":
-                dname = self._g[n].params["name"]
-            domain += [dname]
-            vi = v[n]
-            vo = v[n]
-            ii = i[n]
-            io = i[n]
-            p = self._parents[n]
+            # calculate results for each node
+            names, parent, typ, pwr, loss = [], [], [], [], []
+            eff, warn, vsi, iso, vso, isi = [], [], [], [], [], []
+            domain, phases, dname = [], [], "none"
+            sources, dwarns = {}, {}
+            for n in self._topo_nodes:  # [vi, vo, ii, io]
+                names += [self._g[n].params["name"]]
+                if self._g[n].component_type.name == "SOURCE":
+                    dname = self._g[n].params["name"]
+                domain += [dname]
+                phases += [ph]
+                vi = v[n]
+                vo = v[n]
+                ii = i[n]
+                io = i[n]
+                p = self._parents[n]
 
-            if p == -1:  # root
-                vi = v[n] + self._g[n].params["rs"] * ii
-            elif self._childs[n] == -1:  # leaf
-                vi = v[p[0]]
-                io = 0.0
-            else:
-                io = 0.0
-                for c in self._childs[n]:
-                    io += i[c]
-                vi = v[p[0]]
-            parent += [self._get_parent_name(n)]
-            p, l, e = self._g[n]._solv_pwr_loss(vi, vo, ii, io, "")
-            pwr += [p]
-            loss += [l]
-            eff += [e]
-            typ += [self._g[n].component_type.name]
-            if self._g[n].component_type.name == "SOURCE":
-                sources[dname] = vi
-                dwarns[dname] = 0
-            w = self._g[n]._solv_get_warns(vi, vo, ii, io, "")
-            warn += [w]
-            if w != "":
-                dwarns[dname] = 1
-            vsi += [vi]
-            iso += [io]
-            vso += [v[n]]
-            isi += [i[n]]
+                if p == -1:  # root
+                    vi = v[n] + self._g[n].params["rs"] * ii
+                elif self._childs[n] == -1:  # leaf
+                    vi = v[p[0]]
+                    io = 0.0
+                else:
+                    io = 0.0
+                    for c in self._childs[n]:
+                        io += i[c]
+                    vi = v[p[0]]
+                parent += [self._get_parent_name(n)]
+                p, l, e = self._g[n]._solv_pwr_loss(vi, vo, ii, io, "")
+                pwr += [p]
+                loss += [l]
+                eff += [e]
+                typ += [self._g[n].component_type.name]
+                if self._g[n].component_type.name == "SOURCE":
+                    sources[dname] = vi
+                    dwarns[dname] = 0
+                w = self._g[n]._solv_get_warns(vi, vo, ii, io, "")
+                warn += [w]
+                if w != "":
+                    dwarns[dname] = 1
+                vsi += [vi]
+                iso += [io]
+                vso += [v[n]]
+                isi += [i[n]]
 
-        # subsystems summary
-        for d in range(len(sources)):
-            names += ["Subsystem {}".format(list(sources.keys())[d])]
+            # subsystems summary
+            for d in range(len(sources)):
+                names += ["Subsystem {}".format(list(sources.keys())[d])]
+                typ += [""]
+                parent += [""]
+                domain += [""]
+                phases += [ph]
+                vsi += [sources[list(sources.keys())[d]]]
+                vso += [""]
+                isi += [""]
+                iso += [""]
+                pwr += [""]
+                loss += [""]
+                eff += [""]
+                if dwarns[list(sources.keys())[d]] > 0:
+                    warn += ["Yes"]
+                else:
+                    warn += [""]
+
+            # system total
+            names += ["System total"]
             typ += [""]
             parent += [""]
             domain += [""]
-            vsi += [sources[list(sources.keys())[d]]]
+            phases += [ph]
+            vsi += [""]
             vso += [""]
             isi += [""]
             iso += [""]
             pwr += [""]
             loss += [""]
             eff += [""]
-            if dwarns[list(sources.keys())[d]] > 0:
+            if any(warn):
                 warn += ["Yes"]
             else:
                 warn += [""]
 
-        # system total
-        names += ["System total"]
-        typ += [""]
-        parent += [""]
-        domain += [""]
-        vsi += [""]
-        vso += [""]
-        isi += [""]
-        iso += [""]
-        pwr += [""]
-        loss += [""]
-        eff += [""]
-        if any(warn):
-            warn += ["Yes"]
-        else:
-            warn += [""]
+            # report
+            res = {}
+            res["Component"] = names
+            res["Type"] = typ
+            res["Parent"] = parent
+            res["Domain"] = domain
+            if ph != "":
+                res["Phase"] = phases
+            res["Vin (V)"] = vsi
+            res["Vout (V)"] = vso
+            res["Iin (A)"] = isi
+            res["Iout (A)"] = iso
+            res["Power (W)"] = pwr
+            res["Loss (W)"] = loss
+            res["Efficiency (%)"] = eff
+            res["Warnings"] = warn
+            df = pd.DataFrame(res)
 
-        # report
-        res = {}
-        res["Component"] = names
-        res["Type"] = typ
-        res["Parent"] = parent
-        res["Domain"] = domain
-        res["Vin (V)"] = vsi
-        res["Vout (V)"] = vso
-        res["Iin (A)"] = isi
-        res["Iout (A)"] = iso
-        res["Power (W)"] = pwr
-        res["Loss (W)"] = loss
-        res["Efficiency (%)"] = eff
-        res["Warnings"] = warn
-        df = pd.DataFrame(res)
+            # update subsystem power/loss/efficiency
+            for d in range(len(sources)):
+                src = list(sources.keys())[d]
+                idx = df[df.Component == "Subsystem {}".format(src)].index[0]
+                pwr = df[(df.Domain == src) & (df.Type == "SOURCE")][
+                    "Power (W)"
+                ].values[0]
+                df.at[idx, "Power (W)"] = pwr
+                loss = df[df.Domain == src]["Loss (W)"].sum()
+                df.at[idx, "Loss (W)"] = loss
+                df.at[idx, "Efficiency (%)"] = _get_eff(pwr, loss)
 
-        # update subsystem power/loss/efficiency
-        for d in range(len(sources)):
-            src = list(sources.keys())[d]
-            idx = df[df.Component == "Subsystem {}".format(src)].index[0]
-            pwr = df[(df.Domain == src) & (df.Type == "SOURCE")]["Power (W)"].values[0]
+            # update system total
+            pwr = df[(df.Domain == "") & (df["Power (W)"] != "")]["Power (W)"].sum()
+            idx = df.index[-1]
             df.at[idx, "Power (W)"] = pwr
-            loss = df[df.Domain == src]["Loss (W)"].sum()
+            loss = df[(df.Domain == "") & (df["Loss (W)"] != "")]["Loss (W)"].sum()
             df.at[idx, "Loss (W)"] = loss
             df.at[idx, "Efficiency (%)"] = _get_eff(pwr, loss)
 
-        # update system total
-        pwr = df[(df.Domain == "") & (df["Power (W)"] != "")]["Power (W)"].sum()
-        idx = df.index[-1]
-        df.at[idx, "Power (W)"] = pwr
-        loss = df[(df.Domain == "") & (df["Loss (W)"] != "")]["Loss (W)"].sum()
-        df.at[idx, "Loss (W)"] = loss
-        df.at[idx, "Efficiency (%)"] = _get_eff(pwr, loss)
+            # if only one subsystem, delete subsystem row
+            if len(sources) < 2:
+                df.drop(len(df) - 2, inplace=True)
+                df.reset_index(inplace=True, drop=True)
+            frames += [df]
 
-        # if only one subsystem, delete subsystem row
-        if len(sources) < 2:
-            df.drop(len(df) - 2, inplace=True)
-            df.reset_index(inplace=True, drop=True)
-        return df
+        rms = pd.Series(
+            ["System RMS total", 0.0, 0.0, 0.0],
+            index=["Component", "Power (W)", "Loss (W)", "Efficiency (%)"],
+        )
+        if len(phase_list) > 1:
+            frames += [rms.to_frame().T]
+        dff = pd.concat(frames, ignore_index=True)
+        return dff.fillna("")
 
     def params(self, limits=False):
         """Return component parameters"""
