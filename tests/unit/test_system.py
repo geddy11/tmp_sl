@@ -44,7 +44,7 @@ def test_case1():
     assert len(df) == 10, "Case1 solution row count"
     assert np.allclose(
         df[df["Component"] == "System total"]["Efficiency (%)"][9],
-        79.3625,
+        79.3669,
         rtol=1e-6,
     ), "Case1 efficiency"
     assert df[df["Component"] == "System total"]["Warnings"][9] == "", "Case 1 warnings"

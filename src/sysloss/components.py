@@ -76,11 +76,11 @@ def _get_warns(limits, checks):
     return warn
 
 
-def _get_eff(pwr, loss, def_loss=100.0):
+def _get_eff(ipwr, opwr, def_eff=100.0):
     """Calculate efficiency in %"""
-    if pwr > 0.0:
-        return ((pwr - loss) / pwr) * 100.0
-    return def_loss
+    if ipwr > 0.0:
+        return 100.0 * abs(opwr / ipwr)
+    return def_eff
 
 
 class ComponentMeta(type):
@@ -171,9 +171,10 @@ class Source:
 
     def _solv_pwr_loss(self, vi, vo, ii, io, phase):
         """Calculate power and loss in component"""
-        pwr = abs(vo * io)
+        opwr = abs(vo * io)
         loss = self.params["rs"] * io * io
-        return pwr, loss, _get_eff(pwr, loss)
+        ipwr = opwr + loss
+        return ipwr, loss, _get_eff(ipwr, opwr)
 
     def _solv_get_warns(self, vi, vo, ii, io, phase):
         """Check limits"""
@@ -236,9 +237,16 @@ class PLoad:
 
     def _solv_inp_curr(self, vi, vo, io, phase):
         """Calculate component input current from vi, vo and io"""
-        if vi != 0.0:
-            return self.params["pwr"] / abs(vi)
-        return 0.0
+        if vi == 0.0:
+            return 0.0
+        if phase == "" or not self.params["phase_loads"]:
+            p = self.params["pwr"]
+        elif phase not in self.params["phase_loads"]:
+            p = self.params["pwrs"]
+        else:
+            p = self.params["phase_loads"][phase]
+
+        return p / abs(vi)
 
     def _solv_outp_volt(self, vi, ii, io, phase):
         """Load output voltage is always 0"""
@@ -250,6 +258,9 @@ class PLoad:
 
     def _solv_get_warns(self, vi, vo, ii, io, phase):
         """Check limits"""
+        if self.params["phase_loads"] and phase != "":
+            if phase not in self.params["phase_loads"]:
+                return ""
         return _get_warns(self.limits, {"vi": vi, "ii": ii})
 
 
@@ -295,9 +306,16 @@ class ILoad(PLoad):
         return self.params["ii"]
 
     def _solv_inp_curr(self, vi, vo, io, phase):
-        if vi != 0.0:
-            return self.params["ii"]
-        return 0.0
+        if vi == 0.0:
+            return 0.0
+        if phase == "" or not self.params["phase_loads"]:
+            i = self.params["ii"]
+        elif phase not in self.params["phase_loads"]:
+            i = self.params["iis"]
+        else:
+            i = self.params["phase_loads"][phase]
+
+        return abs(i)
 
 
 class RLoad(PLoad):
@@ -338,7 +356,14 @@ class RLoad(PLoad):
         return cls(name, rs=r, limits=lim, phase_loads=pl)
 
     def _solv_inp_curr(self, vi, vo, io, phase):
-        return abs(vi) / self.params["rs"]
+        r = self.params["rs"]
+        if phase == "" or not self.params["phase_loads"]:
+            pass
+        elif phase not in self.params["phase_loads"]:
+            pass
+        else:
+            r = self.params["phase_loads"][phase]
+        return abs(vi) / r
 
 
 class Loss:
@@ -397,10 +422,14 @@ class Loss:
 
     def _solv_inp_curr(self, vi, vo, io, phase):
         """Calculate component input current from vi, vo and io"""
+        if abs(vi) == 0.0:
+            return 0.0
         return io  # TODO: iq?
 
     def _solv_outp_volt(self, vi, ii, io, phase):
         """Calculate component output voltage from vi, ii and io"""
+        if abs(vi) == 0.0:
+            return 0.0
         if vi >= 0.0:
             return vi - self.params["rs"] * io - self.params["vdrop"]
         else:
@@ -409,8 +438,9 @@ class Loss:
     def _solv_pwr_loss(self, vi, vo, ii, io, phase):
         """Calculate power and loss in component"""
         loss = abs(self.params["rs"] * ii * ii + self.params["vdrop"] * ii)
-        pwr = abs(vi * ii)
-        return 0.0, loss, _get_eff(pwr, loss, 0.0)
+        ipwr = abs(vi * ii)
+        opwr = abs(vo * io)
+        return 0.0, loss, _get_eff(ipwr, opwr, 0.0)
 
     def _solv_get_warns(self, vi, vo, ii, io, phase):
         """Check limits"""
@@ -478,21 +508,42 @@ class Converter:
         return cls(name, vo=v, eff=e, iq=iq, limits=lim, iis=iis, active_phases=ap)
 
     def _get_inp_current(self, phase):
-        return self.params["iq"]
+        i = self.params["iq"]
+        if phase == "" or not self.params["active_phases"]:
+            pass
+        elif phase not in self.params["active_phases"]:
+            i = self.params["iis"]
+        return i
 
     def _get_outp_voltage(self, phase):
-        return self.params["vo"]
+        v = self.params["vo"]
+        if phase == "" or not self.params["active_phases"]:
+            pass
+        elif phase not in self.params["active_phases"]:
+            v = 0.0
+        return v
 
     def _solv_inp_curr(self, vi, vo, io, phase):
         """Calculate component input current from vi, vo and io"""
+        if abs(vi) == 0.0:
+            return 0.0
         ve = self.params["eff"] * vi
+        if phase == "" or not self.params["active_phases"]:
+            pass
+        elif phase not in self.params["active_phases"]:
+            return self.params["iis"]
         if ve > 0.0:
             return self.params["iq"] + abs(vo * io / ve)
         return 0.0
 
     def _solv_outp_volt(self, vi, ii, io, phase):
         """Calculate component output voltage from vi, ii and io"""
-        return self.params["vo"]
+        v = self.params["vo"]
+        if phase == "" or not self.params["active_phases"]:
+            pass
+        elif phase not in self.params["active_phases"]:
+            v = 0.0
+        return v
 
     def _solv_pwr_loss(self, vi, vo, ii, io, phase):
         """Calculate power and loss in component"""
@@ -501,7 +552,12 @@ class Converter:
             + (ii - self.params["iq"]) * vi * (1.0 - self.params["eff"])
         )
         pwr = abs(vi * ii)
-        return 0.0, loss, _get_eff(pwr, loss, 0.0)
+        if phase == "" or not self.params["active_phases"]:
+            pass
+        elif phase not in self.params["active_phases"]:
+            loss = abs(self.params["iis"] * vi)
+            pwr = 0.0
+        return 0.0, loss, _get_eff(pwr, pwr - loss, 0.0)
 
     def _solv_get_warns(self, vi, vo, ii, io, phase):
         """Check limits"""
@@ -567,18 +623,39 @@ class LinReg:
         return cls(name, vo=v, vdrop=vd, iq=iq, limits=lim, iis=iis, active_phases=ap)
 
     def _get_inp_current(self, phase):
-        return self.params["iq"]
+        i = self.params["iq"]
+        if phase == "" or not self.params["active_phases"]:
+            pass
+        elif phase not in self.params["active_phases"]:
+            i = self.params["iis"]
+        return i
 
     def _get_outp_voltage(self, phase):
-        return self.params["vo"]
+        v = self.params["vo"]
+        if phase == "" or not self.params["active_phases"]:
+            pass
+        elif phase not in self.params["active_phases"]:
+            v = 0.0
+        return v
 
     def _solv_inp_curr(self, vi, vo, io, phase):
         """Calculate component input current from vi, vo and io"""
-        return io + self.params["iq"]
+        if abs(vi) == 0.0:
+            return 0.0
+        i = io + self.params["iq"]
+        if phase == "" or not self.params["active_phases"]:
+            pass
+        elif phase not in self.params["active_phases"]:
+            i = self.params["iis"]
+        return i
 
     def _solv_outp_volt(self, vi, ii, io, phase):
         """Calculate component output voltage from vi, ii and io"""
         v = min(abs(self.params["vo"]), max(abs(vi) - self.params["vdrop"], 0.0))
+        if phase == "" or not self.params["active_phases"]:
+            pass
+        elif phase not in self.params["active_phases"]:
+            v = 0.0
         if self.params["vo"] >= 0.0:
             return v
         return -v
@@ -587,7 +664,12 @@ class LinReg:
         """Calculate power and loss in component"""
         loss = (abs(vi) - abs(vo)) * io + abs(vi) * self.params["iq"]
         pwr = abs(vi * ii)
-        return 0.0, loss, _get_eff(pwr, loss, 0.0)
+        if phase == "" or not self.params["active_phases"]:
+            pass
+        elif phase not in self.params["active_phases"]:
+            loss = abs(self.params["iis"] * vi)
+            pwr = 0.0
+        return 0.0, loss, _get_eff(pwr, pwr - loss, 0.0)
 
     def _solv_get_warns(self, vi, vo, ii, io, phase):
         """Check limits"""

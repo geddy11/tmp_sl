@@ -325,18 +325,18 @@ class System:
             p = self._parents[n]
             if self._childs[n] == -1:  # leaf
                 if p == -1:  # root
-                    vo[n] = self._g[n]._solv_outp_volt(0.0, 0.0, 0.0, "")
+                    vo[n] = self._g[n]._solv_outp_volt(0.0, 0.0, 0.0, phase)
                 else:
-                    vo[n] = self._g[n]._solv_outp_volt(v[p[0]], i[n], 0.0, "")
+                    vo[n] = self._g[n]._solv_outp_volt(v[p[0]], i[n], 0.0, phase)
             else:
                 # add currents into childs
                 isum = 0
                 for c in self._childs[n]:
                     isum += i[c]
                 if p == -1:  # root
-                    vo[n] = self._g[n]._solv_outp_volt(0.0, 0.0, isum, "")
+                    vo[n] = self._g[n]._solv_outp_volt(0.0, 0.0, isum, phase)
                 else:
-                    vo[n] = self._g[n]._solv_outp_volt(v[p[0]], i[n], isum, "")
+                    vo[n] = self._g[n]._solv_outp_volt(v[p[0]], i[n], isum, phase)
         return vo
 
     def _back_prop(self, v: float, i: float, phase: str = ""):
@@ -347,17 +347,17 @@ class System:
             p = self._parents[n]
             if self._childs[n] == -1:  # leaf
                 if p == -1:  # root
-                    ii[n] = self._g[n]._solv_inp_curr(v[n], 0.0, 0.0, "")
+                    ii[n] = self._g[n]._solv_inp_curr(v[n], 0.0, 0.0, phase)
                 else:
-                    ii[n] = self._g[n]._solv_inp_curr(v[p[0]], 0.0, 0.0, "")
+                    ii[n] = self._g[n]._solv_inp_curr(v[p[0]], 0.0, 0.0, phase)
             else:
                 isum = 0.0
                 for c in self._childs[n]:
                     isum += i[c]
                 if p == -1:  # root
-                    ii[n] = self._g[n]._solv_inp_curr(v[n], v[n], isum, "")
+                    ii[n] = self._g[n]._solv_inp_curr(v[n], v[n], isum, phase)
                 else:
-                    ii[n] = self._g[n]._solv_inp_curr(v[p[0]], v[n], isum, "")
+                    ii[n] = self._g[n]._solv_inp_curr(v[p[0]], v[n], isum, phase)
 
         return ii
 
@@ -385,7 +385,10 @@ class System:
                 np.array(i), np.array(ii), rtol=itol
             ):
                 if not quiet:
-                    print("Tolerances met after {} iterations".format(iters))
+                    pname = ""
+                    if phase != "":
+                        pname = "'{}': ".format(phase)
+                    print("{}Tolerances met after {} iterations".format(pname, iters))
                 break
             v, i = vi, ii
         return v, i, iters
@@ -438,7 +441,7 @@ class System:
                         io += i[c]
                     vi = v[p[0]]
                 parent += [self._get_parent_name(n)]
-                p, l, e = self._g[n]._solv_pwr_loss(vi, vo, ii, io, "")
+                p, l, e = self._g[n]._solv_pwr_loss(vi, vo, ii, io, ph)
                 pwr += [p]
                 loss += [l]
                 eff += [e]
@@ -446,7 +449,7 @@ class System:
                 if self._g[n].component_type.name == "SOURCE":
                     sources[dname] = vi
                     dwarns[dname] = 0
-                w = self._g[n]._solv_get_warns(vi, vo, ii, io, "")
+                w = self._g[n]._solv_get_warns(vi, vo, ii, io, ph)
                 warn += [w]
                 if w != "":
                     dwarns[dname] = 1
@@ -520,7 +523,7 @@ class System:
                 df.at[idx, "Power (W)"] = pwr
                 loss = df[df.Domain == src]["Loss (W)"].sum()
                 df.at[idx, "Loss (W)"] = loss
-                df.at[idx, "Efficiency (%)"] = _get_eff(pwr, loss)
+                df.at[idx, "Efficiency (%)"] = _get_eff(pwr, pwr - loss)
 
             # update system total
             pwr = df[(df.Domain == "") & (df["Power (W)"] != "")]["Power (W)"].sum()
@@ -528,7 +531,7 @@ class System:
             df.at[idx, "Power (W)"] = pwr
             loss = df[(df.Domain == "") & (df["Loss (W)"] != "")]["Loss (W)"].sum()
             df.at[idx, "Loss (W)"] = loss
-            df.at[idx, "Efficiency (%)"] = _get_eff(pwr, loss)
+            df.at[idx, "Efficiency (%)"] = _get_eff(pwr, pwr - loss)
 
             # if only one subsystem, delete subsystem row
             if len(sources) < 2:
