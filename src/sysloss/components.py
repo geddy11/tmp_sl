@@ -485,8 +485,8 @@ class Converter:
         self.params["vo"] = vo
         if not (eff > 0.0):
             raise ValueError("Efficiency must be > 0.0")
-        if not (eff < 1.0):
-            raise ValueError("Efficiency must be < 1.0")
+        if not (eff <= 1.0):
+            raise ValueError("Efficiency must be <= 1.0")
         self.params["eff"] = eff
         self.params["iq"] = abs(iq)
         self.params["iis"] = abs(iis)
@@ -532,9 +532,7 @@ class Converter:
             pass
         elif phase not in self.params["active_phases"]:
             return self.params["iis"]
-        if ve > 0.0:
-            return self.params["iq"] + abs(vo * io / ve)
-        return 0.0
+        return self.params["iq"] + abs(vo * io / ve)
 
     def _solv_outp_volt(self, vi, ii, io, phase):
         """Calculate component output voltage from vi, ii and io"""

@@ -309,12 +309,12 @@ class System:
             t.add(self._make_rtree(ndict, n))
         return t
 
-    def _sys_init(self):
+    def _sys_init(self, phase: str = ""):
         """Create vectors of init values for solver"""
         v, i = self._sys_vars()
         for n in self._get_nodes():
-            v[n] = self._g[n]._get_outp_voltage("")
-            i[n] = self._g[n]._get_inp_current("")
+            v[n] = self._g[n]._get_outp_voltage(phase)
+            i[n] = self._g[n]._get_inp_current(phase)
         return v, i
 
     def _fwd_prop(self, v: float, i: float, phase: str = ""):
@@ -375,7 +375,7 @@ class System:
 
     def _solve(self, vtol=1e-5, itol=1e-6, maxiter=1000, quiet=True, phase: str = ""):
         """Solver"""
-        v, i = self._sys_init()
+        v, i = self._sys_init(phase)
         iters = 0
         while iters <= maxiter:
             vi = self._fwd_prop(v, i, phase)
@@ -393,7 +393,7 @@ class System:
             v, i = vi, ii
         return v, i, iters
 
-    def solve(self, *, vtol=1e-5, itol=1e-6, maxiter=1000, quiet=True, phase: str = ""):
+    def solve(self, *, vtol=1e-6, itol=1e-6, maxiter=1000, quiet=True, phase: str = ""):
         """Analyze system"""
         self._rel_update()
         phase_list = [""]
@@ -406,6 +406,7 @@ class System:
         elif len(list(self._g.attrs["phases"].keys())) > 0:
             phase_list = list(self._g.attrs["phases"].keys())
         # solve
+        ppwr, ploss, peff, ptime = [], [], [], []
         frames = []
         for ph in phase_list:
             v, i, iters = self._solve(vtol, itol, maxiter, quiet, ph)
@@ -532,6 +533,11 @@ class System:
             loss = df[(df.Domain == "") & (df["Loss (W)"] != "")]["Loss (W)"].sum()
             df.at[idx, "Loss (W)"] = loss
             df.at[idx, "Efficiency (%)"] = _get_eff(pwr, pwr - loss)
+            if len(phase_list) > 1:
+                ploss += [loss]
+                ppwr += [pwr]
+                peff += [_get_eff(pwr, pwr - loss)]
+                ptime += [self._g.attrs["phases"][ph]]
 
             # if only one subsystem, delete subsystem row
             if len(sources) < 2:
@@ -539,12 +545,16 @@ class System:
                 df.reset_index(inplace=True, drop=True)
             frames += [df]
 
-        rms = pd.Series(
-            ["System RMS total", 0.0, 0.0, 0.0],
-            index=["Component", "Power (W)", "Loss (W)", "Efficiency (%)"],
-        )
         if len(phase_list) > 1:
-            frames += [rms.to_frame().T]
+            ttot = np.sum(np.asarray(ptime))
+            apwr = np.sum(np.multiply(np.asarray(ppwr), np.asarray(ptime))) / ttot
+            aloss = np.sum(np.multiply(np.asarray(ploss), np.asarray(ptime))) / ttot
+            aeff = np.sum(np.multiply(np.asarray(peff), np.asarray(ptime))) / ttot
+            avg = pd.Series(
+                ["System average", apwr, aloss, aeff],
+                index=["Component", "Power (W)", "Loss (W)", "Efficiency (%)"],
+            )
+            frames += [avg.to_frame().T]
         dff = pd.concat(frames, ignore_index=True)
         return dff.fillna("")
 
